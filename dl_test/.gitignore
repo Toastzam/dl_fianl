@@ -1,0 +1,64 @@
+my_secret_key.txt
+temp_log.log
+
+*.log
+*.tmp
+*.bak
+
+npm-debug.log
+.env
+build/
+dist/
+node_modules/ 
+.vscode/      
+
+my_data_folder/*
+
+!my_data_folder/important_config.json
+
+my_file.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv_dog_kpt_final/
+venv/
+env/
+ENV/
+.venv/
+
+# Large model files and data
+*.pth
+*.npy
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+
+# Dataset images (too large for git)
+training/Images/
+backend/static/
+
+# Output files
+output_keypoints/
+*.jpg
+*.jpeg
+*.png
+*.gif
+
+# Temporary files
+get-pip.py
+bup.py
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+
+/src/config.js 
+
