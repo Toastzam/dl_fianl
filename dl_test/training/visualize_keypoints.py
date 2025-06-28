@@ -177,7 +177,7 @@ def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCL
 
 def draw_advanced_keypoints_rgb(img_rgb, pose_results):
     """
-    RGB 이미지에 키포인트와 골격을 그리는 함수 (BGR 변환 없이 직접 처리)
+    RGB 이미지에 키포인트와 골격을 그리는 함수 (투명도 30% 적용)
     """
     if not pose_results:
         return img_rgb
@@ -213,20 +213,21 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
         (15, 16), # 우무릎 - 꼬리끝 (임시)
     ]
     
-    # RGB 색상 정의 (matplotlib/PIL과 호환)
-    colors_rgb = {
-        'keypoint': (255, 255, 0),      # 노란색 키포인트
-        'head': (255, 0, 0),            # 🔴 빨간색 - 머리 부분
+    # BGR 색상 정의 (OpenCV는 BGR 순서)
+    colors_bgr = {
+        'keypoint': (0, 255, 255),      # 노란색 키포인트
+        'head': (0, 0, 255),            # 🔴 빨간색 - 머리 부분
         'body': (0, 255, 0),            # 🟢 초록색 - 몸통
-        'front_legs': (255, 255, 0),    # 🟡 노란색 - 앞다리
-        'back_legs': (255, 165, 0),     # 🟠 주황색 - 뒷다리
+        'front_legs': (0, 255, 255),    # 🟡 노란색 - 앞다리
+        'back_legs': (0, 165, 255),     # 🟠 주황색 - 뒷다리
     }
     
-    from PIL import Image, ImageDraw
+    # RGB를 BGR로 변환 (OpenCV 처리용)
+    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
     
-    # RGB 이미지를 PIL로 변환
-    pil_img = Image.fromarray(img_rgb)
-    draw = ImageDraw.Draw(pil_img)
+    # 투명도 적용을 위한 오버레이 생성
+    overlay = img_bgr.copy()
+    alpha = 0.5  # 50% 투명도
     
     for pose_result in pose_results:
         if hasattr(pose_result, 'pred_instances'):
@@ -249,7 +250,7 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
             
             confidence_threshold = 0.3
             
-            # 골격 선 그리기
+            # 골격 선 그리기 (오버레이에)
             for connection in skeleton_connections:
                 pt1_idx, pt2_idx = connection
                 if (pt1_idx < len(kpts) and pt2_idx < len(kpts) and 
@@ -261,42 +262,40 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
                     
                     # 연결선 색상 결정
                     if connection in [(1, 2), (1, 3), (2, 4), (0, 1), (0, 2), (5, 1), (5, 2)]:
-                        line_color = colors_rgb['head']
+                        line_color = colors_bgr['head']
                     elif connection in [(5, 6), (5, 7), (6, 12), (7, 13), (12, 13)]:
-                        line_color = colors_rgb['body']
+                        line_color = colors_bgr['body']
                     elif connection in [(6, 8), (8, 10), (7, 9), (9, 11)]:
-                        line_color = colors_rgb['front_legs']
+                        line_color = colors_bgr['front_legs']
                     else:
-                        line_color = colors_rgb['back_legs']
+                        line_color = colors_bgr['back_legs']
                     
-                    draw.line([pt1, pt2], fill=line_color, width=3)
+                    cv2.line(overlay, pt1, pt2, line_color, 3)
             
-            # 키포인트 점 그리기
+            # 키포인트 점 그리기 (오버레이에)
             for i, (kpt, score) in enumerate(zip(kpts, kpt_scores)):
                 if score > confidence_threshold:
                     pt = (int(kpt[0]), int(kpt[1]))
                     
-                    # 키포인트별 색상 (RGB 형식)
+                    # 키포인트별 색상 (BGR 형식)
                     if i in [0, 1, 2, 3, 4]:  # 머리 부분
-                        kpt_color = (255, 0, 0)      # 빨간색
+                        kpt_color = (0, 0, 255)      # 빨간색
                     elif i == 5:  # 목
                         kpt_color = (0, 255, 0)      # 초록색
                     elif i in [6, 7, 8, 9, 10, 11]:  # 앞다리
-                        kpt_color = (255, 255, 0)    # 노란색
+                        kpt_color = (0, 255, 255)    # 노란색
                     else:  # 뒷다리, 꼬리
-                        kpt_color = (255, 165, 0)    # 주황색
+                        kpt_color = (0, 165, 255)    # 주황색
                     
                     # 키포인트 원 그리기
-                    radius = 6
-                    bbox = [pt[0]-radius, pt[1]-radius, pt[0]+radius, pt[1]+radius]
-                    draw.ellipse(bbox, fill=kpt_color, outline=(255, 255, 255), width=2)
-                    
-                    # 키포인트 번호 표시
-                    text_pos = (pt[0] + 8, pt[1] - 8)
-                    draw.text(text_pos, str(i), fill=(255, 255, 255))
+                    cv2.circle(overlay, pt, 6, kpt_color, -1)
+                    cv2.circle(overlay, pt, 6, (255, 255, 255), 2)  # 흰색 테두리
     
-    # PIL 이미지를 다시 numpy RGB 배열로 변환
-    return np.array(pil_img)
+    # 투명도 적용하여 합성
+    result = cv2.addWeighted(img_bgr, 1-alpha, overlay, alpha, 0)
+    
+    # BGR을 다시 RGB로 변환
+    return cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
 
 if __name__ == "__main__":
     # --- AP-10K 모델 및 시각화 도구 로드 ---

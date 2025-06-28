@@ -73,6 +73,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Static files 마운트 - 이미지 서빙을 위해 추가
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/output_keypoints", StaticFiles(directory="output_keypoints"), name="output_keypoints")
+app.mount("/training", StaticFiles(directory="../training"), name="training")
+
 # 업로드 폴더 설정
 UPLOAD_FOLDER = "uploads"
 OUTPUT_FOLDER = "output_keypoints"
@@ -215,13 +221,28 @@ async def dummy_search(file_location: str, filename: str):
     """더미 데이터를 사용한 검색 (테스트/폴백용)"""
     print("🔄 더미 모드 사용")
     
-    # 더미 검색 결과 생성
+    # 실제 존재하는 이미지 파일들로 더미 검색 결과 생성
+    real_images = [
+        'training/Images/n02087394-Rhodesian_ridgeback/n02087394_11149.jpg',
+        'training/Images/n02087394-Rhodesian_ridgeback/n02087394_1137.jpg',
+        'training/Images/n02087394-Rhodesian_ridgeback/n02087394_1336.jpg',
+        'training/Images/n02087394-Rhodesian_ridgeback/n02087394_1352.jpg',
+        'training/Images/n02087394-Rhodesian_ridgeback/n02087394_1706.jpg',
+        'training/Images/n02088238-basset/n02088238_1261.jpg',
+        'training/Images/n02091134-whippet/n02091134_9793.jpg',
+        'training/Images/n02090379-redbone/n02090379_2420.jpg'
+    ]
+    
     dummy_results = []
-    for i in range(5):
+    for i in range(min(8, len(real_images))):
+        image_path = real_images[i]
+        # 키포인트 이미지 경로 생성
+        image_name = image_path.split('/')[-1].replace('.jpg', '_keypoints.jpg')
+        
         dummy_results.append({
             'rank': i + 1,
-            'image_path': f'training/Images/n02085936-Maltese_dog/sample_{i+1}.jpg',
-            'keypoint_image_path': f'output_keypoints/sample_{i+1}_keypoints.jpg',
+            'image_path': image_path,
+            'keypoint_image_path': f'output_keypoints/{image_name}',
             'simclr_similarity': random.uniform(0.7, 0.95),
             'keypoint_similarity': random.uniform(0.6, 0.9),
             'combined_similarity': random.uniform(0.65, 0.92)
