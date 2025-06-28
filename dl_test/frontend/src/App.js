@@ -1,129 +1,217 @@
 import React, { useState } from 'react';
-import DogSimilarityVisualizer from './DogSimilarityVisualizer'; // 경로 확인
-import './App.css'; // 기본 앱 CSS (옵션)
+import './App.css';
 
 function App() {
-  const [result, setResult] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [selectedFile1, setSelectedFile1] = useState(null);
-  const [selectedFile2, setSelectedFile2] = useState(null);
-  const [previewUrl1, setPreviewUrl1] = useState(null);
-  const [previewUrl2, setPreviewUrl2] = useState(null);
+  const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
 
-  // 파일 선택 핸들러
-  const handleFileChange1 = (event) => {
+  const handleFileSelect = (event) => {
     const file = event.target.files[0];
-    setSelectedFile1(file);
     if (file) {
-      setPreviewUrl1(URL.createObjectURL(file));
-    } else {
-      setPreviewUrl1(null);
+      setSelectedFile(file);
+      setResults(null);
+      setError(null);
     }
   };
 
-  const handleFileChange2 = (event) => {
-    const file = event.target.files[0];
-    setSelectedFile2(file);
-    if (file) {
-      setPreviewUrl2(URL.createObjectURL(file));
-    } else {
-      setPreviewUrl2(null);
-    }
-  };
-
-  // 비교 버튼 클릭 핸들러
-  const handleCompare = async () => {
-    if (!selectedFile1 || !selectedFile2) {
-      alert("비교할 두 이미지를 선택해주세요.");
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setError('먼저 이미지를 선택해주세요.');
       return;
     }
 
     setLoading(true);
-    setResult(null); // 이전 결과 초기화
+    setError(null);
 
     const formData = new FormData();
-    formData.append('file1', selectedFile1);
-    formData.append('file2', selectedFile2);
+    formData.append('file', selectedFile);
 
     try {
-      // package.json의 proxy 설정 덕분에 상대 경로로 호출 가능
-      const res = await fetch('/compare_dogs_with_heatmap/', {
+      const response = await fetch('http://localhost:8001/api/upload_and_search/', {
         method: 'POST',
         body: formData,
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await response.json();
+
+      if (data.success) {
+        setResults(data);
+      } else {
+        setError(data.detail || '검색에 실패했습니다.');
       }
-        const data = await res.json();
-        setResult({
-            similarity: data.similarity,
-            heatmapUrl1: data.heatmap_image1,
-            heatmapUrl2: data.heatmap_image2,
-            point1: data.point1, // 추가
-            point2: data.point2, // 추가
-        });
-    } catch (error) {
-      console.error("비교 중 오류 발생:", error);
-      alert(`오류 발생: ${error.message}. 서버가 실행 중인지 확인하고, 올바른 이미지 파일을 업로드했는지 확인해주세요.`);
+    } catch (err) {
+      setError('서버 연결에 실패했습니다: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const getImageUrl = (imagePath) => {
+    return `http://localhost:8001/api/image/${imagePath}`;
+  };
+
   return (
     <div className="App">
-      <header className="App-header" style={{ marginBottom: '30px', backgroundColor: '#61dafb', padding: '20px', borderRadius: '10px' }}>
-        <h1 style={{ color: 'white' }}>강아지 외형 유사도 분석기</h1>
-        <p style={{ color: 'white', fontSize: '1.1em' }}>두 강아지 이미지의 외형 유사도를 비교하고, 모델이 주목한 부위를 확인해보세요!</p>
+      <header className="App-header">
+        <h1>🐕 강아지 유사도 검색 시스템</h1>
+        <p>SimCLR + AP-10K 키포인트 기반 유사도 검색</p>
       </header>
 
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '30px' }}>
-        <div style={{ textAlign: 'center' }}>
-          <input type="file" accept="image/*" onChange={handleFileChange1} />
-          {previewUrl1 && <img src={previewUrl1} alt="Preview 1" style={{ maxWidth: '250px', maxHeight: '250px', marginTop: '10px', border: '1px solid #ddd', borderRadius: '5px' }} />}
+      <main className="main-content">
+        {/* 업로드 섹션 */}
+        <div className="upload-section">
+          <div className="upload-area">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleFileSelect}
+              className="file-input"
+              id="file-input"
+            />
+            <label htmlFor="file-input" className="file-label">
+              📁 이미지 선택
+            </label>
+            
+            {selectedFile && (
+              <div className="selected-file">
+                <p>선택된 파일: {selectedFile.name}</p>
+                <img 
+                  src={URL.createObjectURL(selectedFile)} 
+                  alt="Selected" 
+                  className="preview-image"
+                />
+              </div>
+            )}
+            
+            <button 
+              onClick={handleUpload} 
+              disabled={!selectedFile || loading}
+              className="upload-button"
+            >
+              {loading ? '🔍 검색 중...' : '🚀 유사도 검색 시작'}
+            </button>
+          </div>
         </div>
-        <div style={{ textAlign: 'center' }}>
-          <input type="file" accept="image/*" onChange={handleFileChange2} />
-          {previewUrl2 && <img src={previewUrl2} alt="Preview 2" style={{ maxWidth: '250px', maxHeight: '250px', marginTop: '10px', border: '1px solid #ddd', borderRadius: '5px' }} />}
-        </div>
-      </div>
 
-      <button
-        onClick={handleCompare}
-        disabled={loading || !selectedFile1 || !selectedFile2}
-        style={{
-          padding: '15px 30px',
-          fontSize: '1.2em',
-          backgroundColor: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '8px',
-          cursor: 'pointer',
-          transition: 'background-color 0.3s ease',
-          marginBottom: '30px'
-        }}
-      >
-        {loading ? '비교 중...' : '두 강아지 유사도 비교하기'}
-      </button>
+        {/* 에러 메시지 */}
+        {error && (
+          <div className="error-message">
+            ❌ {error}
+          </div>
+        )}
 
-      {loading && <p>모델이 이미지를 분석하고 있습니다...</p>}
+        {/* 로딩 상태 */}
+        {loading && (
+          <div className="loading">
+            <div className="spinner"></div>
+            <p>강아지 유사도를 분석하고 있습니다...</p>
+            <p>SimCLR 특징 추출 및 키포인트 검출 진행 중</p>
+          </div>
+        )}
 
-      {result && (
-        <DogSimilarityVisualizer
-          imageUrl1={previewUrl1} // 업로드된 이미지 미리보기 URL 사용
-          imageUrl2={previewUrl2}
-          heatmapUrl1={result.heatmap_image1}
-          heatmapUrl2={result.heatmap_image2}
-          similarityScore={result.similarity}
-          point1={result.point1} // 추가
-          point2={result.point2} // 추가
-        />
-      )}
+        {/* 검색 결과 */}
+        {results && (
+          <div className="results-section">
+            <h2>🎯 검색 결과</h2>
+            
+            {/* 쿼리 이미지 */}
+            <div className="query-section">
+              <h3>📷 입력 이미지</h3>
+              <div className="image-comparison">
+                <div className="image-item">
+                  <h4>원본 이미지</h4>
+                  <img 
+                    src={getImageUrl(results.query_image)} 
+                    alt="Query" 
+                    className="result-image"
+                    onError={(e) => {
+                      console.error('이미지 로드 실패:', results.query_image);
+                      e.target.style.display = 'none';
+                    }}
+                  />
+                </div>
+                <div className="image-item">
+                  <h4>키포인트 검출 결과</h4>
+                  {results.query_keypoint_image ? (
+                    <img 
+                      src={getImageUrl(results.query_keypoint_image)} 
+                      alt="Query Keypoints" 
+                      className="result-image"
+                      onError={(e) => {
+                        console.error('키포인트 이미지 로드 실패:', results.query_keypoint_image);
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <p>키포인트 검출 실패</p>
+                  )}
+                </div>
+              </div>
+            </div>
 
-      {!result && !loading && (
-        <p style={{ marginTop: '50px', color: '#666' }}>두 강아지 이미지를 선택하고 '비교하기' 버튼을 눌러주세요.</p>
-      )}
+            {/* 유사 이미지 갤러리 */}
+            <div className="gallery-section">
+              <h3>🏆 유사한 강아지들 (복합 유사도 기준)</h3>
+              <div className="results-gallery">
+                {results.results.map((result, index) => (
+                  <div key={index} className="result-card">
+                    <div className="rank-badge">#{result.rank}</div>
+                    
+                    <div className="image-pair">
+                      <div className="original-image">
+                        <h4>원본</h4>
+                        <img 
+                          src={getImageUrl(result.image_path)} 
+                          alt={`Similar ${index + 1}`}
+                          className="gallery-image"
+                          onError={(e) => {
+                            console.error('원본 이미지 로드 실패:', result.image_path);
+                            e.target.style.display = 'none';
+                          }}
+                        />
+                      </div>
+                      
+                      <div className="keypoint-image">
+                        <h4>키포인트</h4>
+                        {result.keypoint_image_path ? (
+                          <img 
+                            src={getImageUrl(result.keypoint_image_path)} 
+                            alt={`Keypoints ${index + 1}`}
+                            className="gallery-image"
+                            onError={(e) => {
+                              console.error('키포인트 이미지 로드 실패:', result.keypoint_image_path);
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                        ) : (
+                          <p>키포인트 없음</p>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="similarity-scores">
+                      <div className="score-item">
+                        <span className="score-label">🎨 SimCLR:</span>
+                        <span className="score-value">{(result.simclr_similarity * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="score-item">
+                        <span className="score-label">🦴 키포인트:</span>
+                        <span className="score-value">{(result.keypoint_similarity * 100).toFixed(1)}%</span>
+                      </div>
+                      <div className="score-item combined">
+                        <span className="score-label">🏆 복합 유사도:</span>
+                        <span className="score-value">{(result.combined_similarity * 100).toFixed(1)}%</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

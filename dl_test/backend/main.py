@@ -1,22 +1,33 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from PIL import Image
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import io
-import torch
-import torch.nn.functional as F
-import numpy as np
-import cv2
-import matplotlib.cm as cm
-import base64
 import os
-
-# --- 모델 관련 (사용자님의 실제 SimCLR 인코더 클래스로 교체 필요) ---
-# 이 클래스는 사용자님의 SimCLR 인코더와 동일해야 합니다.
-# 실제 프로젝트에서는 별도의 파일로 빼서 import 하는 것이 좋습니다.
+import sys
+import json
+import tempfile
+import io
+import base64
+import numpy as np
+from PIL import Image
+import torch
 import torch.nn as nn
-from transformers import ViTConfig, ViTModel, ViTImageProcessor # ViTImageProcessor 추가
+import torch.nn.functional as F
+from transformers import ViTModel, ViTConfig, ViTImageProcessor
+import cv2
+from matplotlib import cm
+
+# 프로젝트 루트를 sys.path에 추가
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 우리가 만든 모듈 임포트
+from training.visualize_keypoints import (
+    setup_ap10k_model, 
+    detect_and_visualize_keypoints,
+    calculate_keypoint_similarity
+)
+from training.search_similar_dogs import search_similar_dogs
 
 class SimCLREncoder(nn.Module):
     def __init__(self, model_name="google/vit-base-patch16-224-in21k", projection_dim=128):
@@ -45,44 +56,59 @@ class SimCLREncoder(nn.Module):
 # --- 전역 변수 설정 ---
 model = None
 processor = None
+ap10k_model = None
+ap10k_device = None
+visualizer = None
 device = "cuda" if torch.cuda.is_available() else "cpu"
+
+# 업로드 폴더 설정
+UPLOAD_FOLDER = "uploads"
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs("output_keypoints", exist_ok=True)
+
+def allowed_file(filename: str) -> bool:
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- 서버 시작 시 모델 로드 (앱이 처음 실행될 때 한 번만) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model, processor
-    print(f"모델 로드 중... (Device: {device})")
+    # 시작 시 모델 로드
+    global ap10k_model, device, visualizer
     try:
-        model = SimCLREncoder(projection_dim=128)
-        # 학습된 모델 가중치 파일 경로
-        model_weights_path = "backend/static/simclr_dog_encoder_epoch_50.pth"
-
-        if os.path.exists(model_weights_path):
-            print(f"학습된 모델 가중치 파일 로드: {model_weights_path}")
-            model.load_state_dict(torch.load(model_weights_path, map_location=device))
-        else:
-            print("학습된 모델 가중치 파일을 찾을 수 없습니다. 모델이 무작위 초기화 상태로 사용됩니다.")
-            print(f"경로 확인: {os.path.abspath(model_weights_path)}")
-
-        model.eval() # 추론 모드로 설정 (드롭아웃, 배치 정규화 등에 영향)
-        model.to(device)
-
-        # ViTImageProcessor는 이미지 전처리에 사용됩니다.
-        processor = ViTImageProcessor.from_pretrained(model.model_name)
-        print("모델 로드 및 프로세서 준비 완료.")
-
+        print("🚀 AP-10K 모델 로딩 중...")
+        ap10k_model, device, visualizer = setup_ap10k_model()
+        print("✅ AP-10K 모델 로드 완료!")
     except Exception as e:
-        print(f"모델 로드 중 오류 발생: {e}")
-        # 오류 발생 시 모델을 None으로 유지하여 API 호출 시 처리할 수 있도록 함
-        model = None
-        processor = None
+        print(f"❌ 모델 로드 실패: {e}")
+        ap10k_model = None
+    
     yield
-    print("FastAPI 앱 종료 중...")
-        
-app = FastAPI(lifespan=lifespan)
+    
+    # 종료 시 정리
+    print("🔄 서버 종료 중...")
 
-# 정적 파일 (이미지) 서빙 설정: 'static' 폴더의 파일을 '/static' 경로로 접근 가능하게 함
+# FastAPI 앱 생성 시 lifespan 사용
+app = FastAPI(
+    title="Dog Similarity Search API",
+    description="SimCLR + AP-10K 키포인트 기반 강아지 유사도 검색 API",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# CORS 설정 추가
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  # React 앱 URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 정적 파일 (이미지) 서빙 설정
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+app.mount("/output_keypoints", StaticFiles(directory="output_keypoints"), name="output_keypoints")
 
 # --- 히트맵 생성 함수 (매우 간략화된 예시) ---
 # 실제 어텐션 맵 시각화를 위해서는 ViTModel의 outputs.attentions를 사용하여
@@ -152,7 +178,7 @@ def get_attention_heatmap(original_image_pil: Image.Image, attentions, patch_siz
     # 이 부분을 직접 구현하셔야 합니다!
     
     # **임시로, 다시 더미 히트맵을 생성하여 전달합니다.**
-    # (사용자님이 이 함수를 실제 어텐션 맵 생성 로직으로 교체해야 함)
+    # (사용자님이 이 함수를 실제 어텐션 맵 생성 로직로 교체해야 함)
     # -----------------------------------------------------------------
     
     # 실제 어텐션 맵 데이터 (0~1 사이)
@@ -162,7 +188,7 @@ def get_attention_heatmap(original_image_pil: Image.Image, attentions, patch_siz
 
     # 현재는 아래 generate_dummy_heatmap_b64를 계속 사용합니다.
     # 따라서 계속 중앙에 원형 히트맵이 나올 것입니다.
-    return generate_dummy_heatmap_b64(original_image_pil) # <<< 이 부분을 실제 로직으로 교체해야 함!
+    return generate_dummy_heatmap_b64(original_image_pil) # <<< 이 부분을 실제 로직으로 교체해야 함
 
 
 def get_attention_heatmap(original_image_pil: Image.Image, attentions, patch_size=16):
@@ -233,3 +259,129 @@ async def compare_dog_images_with_heatmap(file1: UploadFile = File(...), file2: 
     except Exception as e:
         print(f"API 처리 중 오류 발생: {e}")
         return JSONResponse(status_code=500, content={"message": f"서버 오류: {str(e)}"})
+
+# --- 새로운 API: 이미지 업로드 및 유사도 검색 ---
+@app.post("/api/upload_and_search/")
+async def upload_and_search_similar_dogs(file: UploadFile = File(...)):
+    """이미지 업로드 및 유사도 검색 API"""
+    if model is None or processor is None:
+        raise HTTPException(status_code=503, detail="SimCLR 모델이 로드되지 않았습니다.")
+    
+    if ap10k_model is None:
+        raise HTTPException(status_code=503, detail="AP-10K 키포인트 모델이 로드되지 않았습니다.")
+    
+    try:
+        # 1. 업로드된 이미지 저장
+        file_content = await file.read()
+        filename = f"query_{file.filename}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        with open(filepath, "wb") as f:
+            f.write(file_content)
+        
+        print(f"🔍 쿼리 이미지 저장: {filepath}")
+        
+        # 2. 쿼리 이미지 키포인트 검출
+        query_kp_output_path, query_pose_results = detect_and_visualize_keypoints(
+            filepath, ap10k_model, ap10k_device, visualizer
+        )
+        
+        if query_pose_results is None:
+            raise HTTPException(status_code=500, detail="키포인트 검출에 실패했습니다.")
+        
+        # 3. SimCLR 기반 유사 이미지 검색
+        print("🔍 SimCLR 기반 유사 이미지 검색...")
+        similar_results = search_similar_dogs(
+            query_image_path=filepath,
+            top_k=5,
+            model_path="../models/simclr_vit_dog_model.pth",
+            out_dim=128,
+            image_size=224,
+            db_features_file="../db_features.npy",
+            db_image_paths_file="../db_image_paths.npy"
+        )
+        
+        # 4. 각 유사 이미지에 대해 키포인트 검출 및 유사도 계산
+        results = []
+        for i, (simclr_similarity, similar_path) in enumerate(similar_results):
+            print(f"🔍 유사 이미지 {i+1} 키포인트 검출: {similar_path}")
+            
+            # 키포인트 검출
+            similar_kp_output_path, similar_pose_results = detect_and_visualize_keypoints(
+                similar_path, ap10k_model, ap10k_device, visualizer
+            )
+            
+            # 키포인트 유사도 계산
+            keypoint_similarity = 0.0
+            if similar_pose_results is not None:
+                keypoint_similarity = calculate_keypoint_similarity(
+                    query_pose_results, similar_pose_results
+                )
+            
+            # 복합 유사도 계산 (SimCLR 70% + 키포인트 30%)
+            combined_similarity = (0.7 * simclr_similarity) + (0.3 * keypoint_similarity)
+            
+            results.append({
+                'rank': i + 1,
+                'image_path': similar_path.replace('\\', '/'),
+                'keypoint_image_path': similar_kp_output_path.replace('\\', '/') if similar_kp_output_path else None,
+                'simclr_similarity': float(simclr_similarity),
+                'keypoint_similarity': float(keypoint_similarity),
+                'combined_similarity': float(combined_similarity)
+            })
+            
+            print(f"  ✅ SimCLR: {simclr_similarity:.4f}, 키포인트: {keypoint_similarity:.4f}, 복합: {combined_similarity:.4f}")
+        
+        # 복합 유사도로 재정렬
+        results.sort(key=lambda x: x['combined_similarity'], reverse=True)
+        
+        return JSONResponse({
+            'success': True,
+            'query_image': filepath.replace('\\', '/'),
+            'query_keypoint_image': query_kp_output_path.replace('\\', '/') if query_kp_output_path else None,
+            'results': results
+        })
+        
+    except Exception as e:
+        print(f"❌ 오류 발생: {e}")
+        raise HTTPException(status_code=500, detail=f"서버 오류: {str(e)}")
+
+@app.get("/api/image/{file_path:path}")
+async def serve_image(file_path: str):
+    """이미지 파일 서빙"""
+    try:
+        # 경로 정규화
+        file_path = file_path.replace('/', os.sep)
+        
+        # 다양한 경로에서 이미지 찾기
+        possible_paths = [
+            file_path,
+            os.path.join('uploads', file_path),
+            os.path.join('output_keypoints', file_path),
+            os.path.join('training', file_path),
+            os.path.join('..', file_path)  # 상위 디렉토리도 검색
+        ]
+        
+        for path in possible_paths:
+            full_path = os.path.abspath(path)
+            if os.path.exists(full_path) and os.path.isfile(full_path):
+                print(f"📷 이미지 서빙: {full_path}")
+                return FileResponse(full_path)
+        
+        print(f"❌ 이미지를 찾을 수 없음: {file_path}")
+        print(f"시도한 경로들: {possible_paths}")
+        raise HTTPException(status_code=404, detail="이미지를 찾을 수 없습니다")
+        
+    except Exception as e:
+        print(f"❌ 이미지 서빙 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- 헬스 체크 API ---
+@app.get("/health")
+async def health_check():
+    """헬스 체크"""
+    return JSONResponse({
+        'status': 'healthy', 
+        'simclr_model_loaded': model is not None,
+        'ap10k_model_loaded': ap10k_model is not None
+    })

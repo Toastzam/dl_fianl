@@ -6,10 +6,22 @@ import os
 
 # --- 프로젝트 구조에 맞춰 필요한 클래스 임포트 ---
 # model.py에서 SimCLRVIT 모델을 불러옵니다.
-from model import SimCLRVIT 
+try:
+    from training.model import SimCLRVIT
+except ImportError:
+    try:
+        from .model import SimCLRVIT
+    except ImportError:
+        from model import SimCLRVIT
 
 # dataset.py에서 get_simclr_transforms 함수를 불러옵니다.
-from dataset import get_simclr_transforms
+try:
+    from training.dataset import get_simclr_transforms
+except ImportError:
+    try:
+        from .dataset import get_simclr_transforms
+    except ImportError:
+        from dataset import get_simclr_transforms
 
 # --- 설정 (train.py에서 가져옴) ---
 # SimCLR 모델의 출력 임베딩 차원 (train.py에서 OUT_DIM과 동일하게 설정)
@@ -41,10 +53,10 @@ def setup_feature_extractor(model_path=SAVE_PATH, out_dim=OUT_DIM, image_size=IM
     model.load_state_dict(torch.load(model_path, map_location=device))
     print(f"모델 가중치 로드 완료: {model_path}")
 
-    # 3. 특징 추출기 부분만 분리
-    # SimCLR 모델은 backbone과 projection_head로 구성됩니다.
-    # 이미지 특징 추출을 위해서는 projection_head를 제외한 backbone만 필요합니다.
-    feature_extractor = model.backbone 
+    # 3. 특징 추출기는 전체 모델 사용 (백본 + projection_head)
+    # SimCLR 모델 전체를 사용해야 128차원 출력을 얻을 수 있습니다.
+    # backbone만 사용하면 ViT tiny의 원본 차원(192)이 나옵니다.
+    feature_extractor = model  # 전체 모델 사용 
     
     # 4. 모델을 평가 모드로 설정 (중요!)
     # 드롭아웃, 배치 정규화 등이 평가 모드에 맞게 작동하도록 설정합니다.

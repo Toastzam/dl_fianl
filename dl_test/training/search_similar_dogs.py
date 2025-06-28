@@ -6,10 +6,16 @@ import os
 import torch.nn.functional as F # 코사인 유사도 계산을 위해 임포트
 
 # --- 프로젝트 구조에 맞춰 필요한 클래스/함수 임포트 ---
-from extract_features import setup_feature_extractor 
+try:
+    from training.extract_features import setup_feature_extractor 
+except ImportError:
+    try:
+        from .extract_features import setup_feature_extractor 
+    except ImportError:
+        from extract_features import setup_feature_extractor 
 
 # --- 설정 (extract_features.py 및 extract_db_features.py에서 가져옴) ---
-OUT_DIM = 128 # ViT-Tiny의 출력 차원
+OUT_DIM = 192 # 실제 DB 특징 벡터와 일치하도록 수정 (기존 128에서 변경)
 MODEL_PATH = 'models/simclr_vit_dog_model.pth' 
 IMAGE_SIZE = 224
 DB_FEATURES_FILE = 'db_features.npy' # 저장된 DB 특징 파일
