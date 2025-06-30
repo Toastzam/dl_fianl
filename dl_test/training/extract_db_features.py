@@ -4,6 +4,10 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import os
 from PIL import Image # Image 모듈 추가 임포트
+import pymysql
+import json
+import requests
+from io import BytesIO
 
 # --- 프로젝트 구조에 맞춰 필요한 클래스/함수 임포트 ---
 from extract_features import setup_feature_extractor 
@@ -84,5 +88,66 @@ def extract_and_save_db_features(
     print(f"저장된 이미지 경로 파일: {image_paths_save_file} (총 {len(all_image_paths)}개)")
     print(f"이제 이 파일을 불러와서 사용자 이미지와 유사도를 비교할 수 있습니다.")
 
+def extract_and_update_db_image_vectors(
+    db_host, db_user, db_password, db_name,
+    model_path=MODEL_PATH,
+    out_dim=OUT_DIM,
+    image_size=IMAGE_SIZE,
+    db_port=3306
+):
+    """
+    DB의 pet_image 테이블에서 이미지 경로를 읽어 벡터를 추출하고, image_vector 컬럼에 저장합니다.
+    """
+    conn = pymysql.connect(
+        host=db_host, user=db_user, password=db_password, db=db_name, port=db_port, charset='utf8mb4'
+    )
+    cursor = conn.cursor()
+    print("DB 연결 성공")
+
+    feature_extractor, preprocess_transform, device = setup_feature_extractor(
+        model_path=model_path, out_dim=out_dim, image_size=image_size
+    )
+
+    cursor.execute("SELECT pet_image_id, public_url FROM pet_image")
+    rows = cursor.fetchall()
+    print(f"총 {len(rows)}개의 이미지를 처리합니다.")
+
+    for idx, (pet_image_id, img_path) in enumerate(rows):
+        try:
+            if isinstance(img_path, bytes):
+                img_path = img_path.decode('utf-8')
+            if img_path.startswith('http://') or img_path.startswith('https://'):
+                response = requests.get(img_path, timeout=10)
+                response.raise_for_status()
+                image = Image.open(BytesIO(response.content)).convert('RGB')
+            else:
+                image = Image.open(img_path).convert('RGB')
+            image_tensor = preprocess_transform(image).unsqueeze(0).to(device)
+            with torch.no_grad():
+                vector = feature_extractor(image_tensor).cpu().numpy().flatten()
+            vector_json = json.dumps(vector.tolist())
+            cursor.execute(
+                "UPDATE pet_image SET image_vector=%s WHERE pet_image_id=%s",
+                (vector_json, pet_image_id)
+            )
+            if (idx+1) % 50 == 0:
+                conn.commit()
+                print(f"{idx+1}개 완료")
+        except Exception as e:
+            print(f"pet_image_id {pet_image_id} 처리 실패: {e}")
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print("DB 벡터 저장 완료")
+
 if __name__ == "__main__":
-    extract_and_save_db_features()
+    # extract_and_save_db_features()  # 기존 폴더 기반 추출
+    # 아래 정보는 실제 환경에 맞게 수정
+    extract_and_update_db_image_vectors(
+        db_host='byhou.synology.me',
+        db_user='h3',
+        db_password='Dbrlrus25^',
+        db_name='h3',
+        db_port=3370
+    )

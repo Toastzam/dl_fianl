@@ -564,42 +564,42 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>성별:</span>
                 <span style={{ fontWeight: 'bold' }}>
-                  {getGenderText(currentDog.gender_code || currentDog.gender) || '정보없음'}
+                  {getGenderText(currentDog.db_info?.gender) || '정보없음'}
                 </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>견종:</span>
-                <span style={{ fontWeight: 'bold' }}>{currentDog.breed || '믹스견'}</span>
+                <span style={{ fontWeight: 'bold' }}>{currentDog.db_info?.breed_name || currentDog.db_info?.breed || '믹스견'}</span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>중성화:</span>
                 <span style={{ fontWeight: 'bold' }}>
-                  {currentDog.neutered === true ? '완료 ✅' : 
-                   currentDog.neutered === false ? '미완료 ❌' : 
-                   (currentDog.neutered || '정보없음')}
+                  {currentDog.db_info?.neutered === true || currentDog.db_info?.neutered === 'Y' ? '완료 ✅' : 
+                   currentDog.db_info?.neutered === false || currentDog.db_info?.neutered === 'N' ? '미완료 ❌' : 
+                   (currentDog.db_info?.neutered || '정보없음')}
                 </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>체중:</span>
                 <span style={{ fontWeight: 'bold' }}>
-                  {currentDog.weight ? `${currentDog.weight}kg` : '정보없음'}
+                  {currentDog.db_info?.weight ? `${currentDog.db_info.weight}kg` : '정보없음'}
                 </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>색상:</span>
-                <span style={{ fontWeight: 'bold' }}>{currentDog.color || '정보없음'}</span>
+                <span style={{ fontWeight: 'bold' }}>{currentDog.db_info?.color || '정보없음'}</span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>입양상태:</span>
-                <span style={{ fontWeight: 'bold' }}>{getAdoptionStatusText(currentDog.adoption_status_code || currentDog.adoption_status) || '정보없음'}</span>
+                <span style={{ fontWeight: 'bold' }}>{getAdoptionStatusText(currentDog.db_info?.adoption_status) || '정보없음'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>특징:</span>
                 <span style={{ fontWeight: 'bold', maxWidth: '120px', textAlign: 'right' }}>
-                  {currentDog.description ? 
-                    (currentDog.description.length > 15 ? 
-                      `${currentDog.description.substring(0, 15)}...` : 
-                      currentDog.description
+                  {currentDog.db_info?.feature ? 
+                    (currentDog.db_info.feature.length > 15 ? 
+                      `${currentDog.db_info.feature.substring(0, 15)}...` : 
+                      currentDog.db_info.feature
                     ) : '정보없음'
                   }
                 </span>

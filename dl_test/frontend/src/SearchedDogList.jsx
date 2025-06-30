@@ -542,19 +542,19 @@ const SearchedDogList = ({ searchResults, onSelectDog, onBackToSearch, originalI
 
                     <div style={{ fontSize: '14px', color: '#666' }}>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>품종:</strong> {dog.breed || '정보 없음'}
+                        <strong>품종:</strong> {dog.db_info?.breed_name || dog.db_info?.breed || '정보 없음'}
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>성별:</strong> {getGenderText(dog.gender_code || dog.gender)}
+                        <strong>성별:</strong> {getGenderText(dog.db_info?.gender)}
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>무게:</strong> {dog.weight ? `${dog.weight}kg` : '정보 없음'}
+                        <strong>무게:</strong> {dog.db_info?.weight ? `${dog.db_info.weight}kg` : '정보 없음'}
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>발견 위치:</strong> {dog.location || dog.found_location || '정보 없음'}
+                        <strong>발견 위치:</strong> {dog.db_info?.location || dog.db_info?.found_location || '정보 없음'}
                       </div>
                       <div>
-                        <strong>입양 상태:</strong> {getAdoptionStatusText(dog.adoption_status_code || dog.adoption_status)}
+                        <strong>입양 상태:</strong> {getAdoptionStatusText(dog.db_info?.adoption_status)}
                       </div>
                     </div>
 

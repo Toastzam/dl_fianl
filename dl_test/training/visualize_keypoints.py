@@ -4,6 +4,8 @@ import os
 from PIL import Image
 import cv2 # OpenCV는 이미지 처리 및 시각화에 유용합니다.
 import mmcv
+import io
+import requests
 
 # --- MMPose 1.3.2+ 버전에 맞는 임포트 ---
 from mmpose.apis import init_model 
@@ -79,41 +81,53 @@ def detect_and_visualize_keypoints(
 ):
     """
     단일 이미지에서 키포인트를 검출하고 시각화하여 저장합니다.
+    image_path가 http/https로 시작하면 URL에서 이미지를 불러옵니다.
     """
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # 원본 이미지를 RGB로 읽기 (웹 표시용)
-    img_rgb = mmcv.imread(image_path, channel_order='rgb')
-    if img_rgb is None:
-        print(f"오류: 이미지를 로드할 수 없습니다: {image_path}. 파일이 존재하는지 확인하세요.")
-        return None, None
+    # --- 이미지 로딩 (로컬/URL 모두 지원) ---
+    img_rgb = None
+    img_source = None
+    if image_path.startswith('http://') or image_path.startswith('https://'):
+        try:
+            response = requests.get(image_path, timeout=10)
+            response.raise_for_status()
+            img_source = Image.open(io.BytesIO(response.content)).convert('RGB')
+            img_rgb = np.array(img_source)
+        except Exception as e:
+            print(f"오류: URL에서 이미지를 불러올 수 없습니다: {image_path}\n{e}")
+            return None, None
+    else:
+        if not os.path.exists(image_path):
+            print(f"오류: 이미지를 로드할 수 없습니다: {image_path}. 파일이 존재하는지 확인하세요.")
+            return None, None
+        img_source = Image.open(image_path).convert('RGB')
+        img_rgb = np.array(img_source)
 
-    img_height, img_width, _ = img_rgb.shape
+    img_height, img_width = img_rgb.shape[:2]
 
     # MMPose의 고수준 추론 API 사용
     from mmpose.apis import inference_topdown
-    
-    # 전체 이미지에 대해 bounding box 생성 (동물 전체를 포함)
     bbox = np.array([[0, 0, img_width, img_height]], dtype=np.float32)
-    
-    # inference_topdown을 사용하여 키포인트 검출
-    pose_results = inference_topdown(ap10k_model, image_path, bbox)
-    
+
+    # inference_topdown은 numpy array도 입력 가능
+    pose_results = inference_topdown(ap10k_model, img_rgb, bbox)
+
     if not pose_results:
         print(f"경고: {image_path}에서 키포인트를 검출할 수 없었습니다. (동물이 없거나 너무 작을 수 있음)")
         return None, None
 
-    # 키포인트 시각화 (RGB 이미지 사용)
     vis_img_rgb = draw_advanced_keypoints_rgb(img_rgb.copy(), pose_results)
-    
+
+    # 파일명 생성 (URL이면 파일명만 추출)
     base_name = os.path.basename(image_path)
+    if not base_name:
+        base_name = 'remote_image'
     name_parts = os.path.splitext(base_name)
-    output_filename = f"{name_parts[0]}_keypoints{name_parts[1]}"
+    output_filename = f"{name_parts[0]}_keypoints{name_parts[1] if name_parts[1] else '.jpg'}"
     output_path = os.path.join(output_dir, output_filename)
-    
-    # PIL을 사용해서 RGB 이미지를 올바르게 저장
-    from PIL import Image
+
     pil_img = Image.fromarray(vis_img_rgb)
     pil_img.save(output_path)
     print(f"키포인트 시각화 저장: {output_path}")
@@ -155,7 +169,7 @@ def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCL
 
     min_kpts = min(len(kpts1), len(kpts2)) 
     kpts1_xy = kpts1[:min_kpts, :2] 
-    kpts2_xy = kpts2[:min_kpts, :2] 
+    kpts2_xy = kpts2[:min_kpts, :2]
     
     kpts1_xy_t = torch.from_numpy(kpts1_xy).float()
     kpts2_xy_t = torch.from_numpy(kpts2_xy).float()
@@ -330,11 +344,15 @@ if __name__ == "__main__":
 
         final_results = []
 
-        for i, (simclr_score, db_img_path) in enumerate(top_similar_dogs_simclr):
+        # SimCLR 검색 결과가 dict 또는 튜플일 수 있으므로 자동 판별
+        for i, result in enumerate(top_similar_dogs_simclr):
+            if isinstance(result, dict):
+                simclr_score = result.get('similarity', 0.0)
+                db_img_path = result.get('image_url') or result.get('image_path')
+            else:
+                simclr_score, db_img_path = result
             print(f"\n--- 유사 강아지 {i+1}: {db_img_path} (SimCLR 유사도: {simclr_score:.4f}) ---")
-            
             # DB 이미지 키포인트 검출 및 시각화
-            # detect_and_visualize_keypoints 호출 시 dataset_info 인자 제거
             db_kp_output_path, db_pose_results = detect_and_visualize_keypoints(
                 db_img_path, ap10k_model, ap10k_device, visualizer
             )

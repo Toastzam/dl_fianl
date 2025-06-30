@@ -1,3 +1,4 @@
+from database import get_all_dogs, get_dog_by_id, add_dog, update_dog, delete_dog, get_dog_by_image_path, add_image_mapping, DatabaseManager, get_breed_codes, get_breed_name_by_code
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,7 +13,6 @@ from PIL import Image
 import random
 
 from feature_extraction_service import get_feature_service
-from database import get_all_dogs, get_dog_by_id, add_dog, update_dog, delete_dog, get_dog_by_image_path, add_image_mapping, DatabaseManager, get_breed_codes, get_breed_name_by_code
 
 # Pydantic 모델 정의
 class ImageUrlRequest(BaseModel):
@@ -99,18 +99,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# SimCLR 관련 설정 (항상 절대경로 사용)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # backend 기준으로 절대경로
+SIMCLR_MODEL_PATH = os.path.join(BASE_DIR, '..', 'models', 'simclr_vit_dog_model.pth')
+if not os.path.exists(SIMCLR_MODEL_PATH):
+    # fallback: dl_test/models/ 경로도 시도
+    alt_path = os.path.join(BASE_DIR, '..', 'dl_test', 'models', 'simclr_vit_dog_model.pth')
+    if os.path.exists(alt_path):
+        SIMCLR_MODEL_PATH = alt_path
+    else:
+        print(f"[경고] SimCLR 모델 파일을 찾을 수 없습니다: {SIMCLR_MODEL_PATH} 또는 {alt_path}")
+
+SIMCLR_OUT_DIM = 128  # 실제 저장된 모델과 일치하도록 복원
+SIMCLR_IMAGE_SIZE = 224
+DB_FEATURES_FILE = os.path.join(BASE_DIR, '..', 'db_features.npy')
+DB_IMAGE_PATHS_FILE = os.path.join(BASE_DIR, '..', 'db_image_paths.npy')
+
 # Static files 마운트 - 이미지 서빙을 위해 추가
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 app.mount("/output_keypoints", StaticFiles(directory="output_keypoints"), name="output_keypoints")
-app.mount("/training", StaticFiles(directory="../training"), name="training")
-
-# SimCLR 관련 설정
-SIMCLR_MODEL_PATH = '../models/simclr_vit_dog_model.pth'
-SIMCLR_OUT_DIM = 128  # 실제 저장된 모델과 일치하도록 복원
-SIMCLR_IMAGE_SIZE = 224
-DB_FEATURES_FILE = '../db_features.npy'
-DB_IMAGE_PATHS_FILE = '../db_image_paths.npy'
+app.mount("/training", StaticFiles(directory=os.path.abspath(os.path.join(BASE_DIR, "..", "training"))), name="training")
 
 @app.post("/api/upload_and_search/")
 async def upload_and_search(file: UploadFile = File(...)):
@@ -143,117 +152,122 @@ async def upload_and_search(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 async def real_model_search(file_location: str, filename: str):
-    """실제 모델을 사용한 검색"""
+    """실제 모델을 사용한 검색 (DB public_url 기반만 사용)"""
     import time
     start_time = time.time()
-    
     try:
-        print("🔍 실제 모델 사용 - 시작")
-        
+        print("🔍 실제 모델 사용 - 시작 (DB public_url 기반)")
         # 1. 쿼리 이미지 키포인트 검출
         print("🔍 단계 1: 쿼리 이미지 키포인트 검출")
         query_kp_output_path, query_pose_results = detect_and_visualize_keypoints(
             file_location, ap10k_model, device, visualizer
         )
         print(f"✅ 쿼리 이미지 키포인트 검출 완료: {query_kp_output_path}")
-        
-        # 2. SimCLR 기반 유사 이미지 검색 (여기서 업로드된 이미지의 특징 추출도 수행됨)
-        print("🔍 단계 2: SimCLR 기반 유사 이미지 검색 시작...")
-        similar_results = search_similar_dogs(
-            query_image_path=file_location,
-            top_k=5,
-            model_path=SIMCLR_MODEL_PATH,
-            out_dim=SIMCLR_OUT_DIM,
-            image_size=SIMCLR_IMAGE_SIZE,
-            db_features_file=DB_FEATURES_FILE,
-            db_image_paths_file=DB_IMAGE_PATHS_FILE
-        )
-        print(f"✅ SimCLR 검색 완료: {len(similar_results)}개 결과")
-        
-        # 3. 각 유사 이미지에 대해 키포인트 검출 및 유사도 계산
-        print("🔍 단계 3: 유사 이미지들의 키포인트 검출 및 종합 유사도 계산")
+
+        # 2. SimCLR 기반 유사 이미지 검색 (DB public_url만 사용)
+        print("🔍 단계 2: SimCLR 기반 유사 이미지 검색 (DB public_url만)")
+        from database import get_all_pet_images  # pet_image 테이블 전체 불러오기 (public_url, image_vector)
+        pet_images = get_all_pet_images()  # [{'public_url': ..., 'image_vector': ...}, ...]
+        print(f"[DEBUG] get_all_pet_images() 반환: {len(pet_images)}개")
+        if pet_images:
+            print(f"[DEBUG] pet_images[0] 예시: " + str({k: (str(v)[:100] if k=='image_vector' else v) for k,v in pet_images[0].items()}))
+        if not pet_images:
+            raise Exception("DB에 등록된 강아지 이미지가 없습니다.")
+        # 쿼리 이미지 벡터 추출
+        print(f"[DEBUG] 쿼리 이미지 벡터 추출 시작: {file_location}")
+        query_vector = feature_service.extract_features_from_path(file_location)
+        print(f"[DEBUG] 쿼리 이미지 벡터 shape: {query_vector.shape if hasattr(query_vector, 'shape') else type(query_vector)}")
+        # 모든 DB 이미지와 유사도 계산
+        import numpy as np
+        db_vectors = np.stack([img['image_vector'] for img in pet_images])
+        print(f"[DEBUG] DB 벡터 shape: {db_vectors.shape}")
+        similarities = np.dot(db_vectors, query_vector) / (np.linalg.norm(db_vectors, axis=1) * np.linalg.norm(query_vector) + 1e-8)
+        print(f"[DEBUG] similarities: {similarities}")
+        # top_k 추출
+        top_k = 5
+        top_indices = similarities.argsort()[::-1][:top_k]
+        print(f"[DEBUG] top_k 인덱스: {top_indices}")
+        similar_results = []
+        for idx in top_indices:
+            simclr_score = float(similarities[idx])
+            db_img = pet_images[idx].copy()
+            if 'image_vector' in db_img:
+                del db_img['image_vector']
+            similar_results.append({
+                'similarity': simclr_score,
+                'image_url': db_img['public_url'],
+                'db_info': db_img
+            })
+        print(f"✅ SimCLR(DB) 검색 완료: {len(similar_results)}개 결과")
+
+        # 3. 각 유사 이미지에 대해 키포인트 검출 및 유사도 계산 (public_url만)
+        print("🔍 단계 3: 유사 이미지들의 키포인트 검출 및 종합 유사도 계산 (public_url)")
         results = []
-        for i, (simclr_score, similar_path) in enumerate(similar_results):
-            print(f"  🔍 유사 이미지 {i+1}/{len(similar_results)} 처리: {os.path.basename(similar_path)}")
-            
-            # 경로 정규화 (Windows 경로 문제 해결)
-            similar_path_normalized = similar_path.replace('\\', '/')
-            full_similar_path = os.path.join('..', similar_path_normalized.replace('/', os.sep))
-            
-            if not os.path.exists(full_similar_path):
-                print(f"⚠️ 이미지 파일을 찾을 수 없음: {full_similar_path}")
-                # 파일이 없으면 키포인트 유사도 0으로 설정
-                keypoint_similarity = 0.0
-                similar_kp_output_path = None
-            else:
-                # 키포인트 검출
-                try:
-                    similar_kp_output_path, similar_pose_results = detect_and_visualize_keypoints(
-                        full_similar_path, ap10k_model, device, visualizer
+        for i, sim_result in enumerate(similar_results):
+            simclr_score = sim_result.get('similarity', 0.0)
+            image_url = sim_result.get('image_url')
+            db_info = sim_result.get('db_info', {}).copy()
+            if 'image_vector' in db_info:
+                del db_info['image_vector']
+            print(f"[DEBUG] db_info({i+1}): {db_info}")
+            print(f"  🔍 유사 이미지 {i+1}/{len(similar_results)} 처리: {os.path.basename(image_url)}")
+            keypoint_similarity = 0.0
+            similar_kp_output_path = None
+            try:
+                print(f"[DEBUG] detect_and_visualize_keypoints 호출: {image_url}")
+                similar_kp_output_path, similar_pose_results = detect_and_visualize_keypoints(
+                    image_url, ap10k_model, device, visualizer
+                )
+                print(f"[DEBUG] 키포인트 결과: {similar_kp_output_path}")
+                if query_pose_results and similar_pose_results:
+                    keypoint_similarity = calculate_keypoint_similarity(
+                        query_pose_results, similar_pose_results
                     )
-                    
-                    # 키포인트 유사도 계산
-                    keypoint_similarity = 0.0
-                    if query_pose_results and similar_pose_results:
-                        keypoint_similarity = calculate_keypoint_similarity(
-                            query_pose_results, similar_pose_results
-                        )
-                except Exception as e:
-                    print(f"⚠️ 키포인트 검출 실패 ({os.path.basename(similar_path)}): {e}")
-                    keypoint_similarity = 0.0
-                    similar_kp_output_path = None
-            
-            # 복합 유사도 계산 (SimCLR 70% + 키포인트 30%)
+                    print(f"[DEBUG] keypoint_similarity: {keypoint_similarity}")
+            except Exception as e:
+                print(f"⚠️ 키포인트 검출 실패 (URL: {image_url}): {e}")
             combined_similarity = (0.7 * simclr_score) + (0.3 * keypoint_similarity)
-            
-            results.append({
+            result_dict = {
                 'rank': i + 1,
-                'image_path': similar_path_normalized,
+                'image_url': image_url,
                 'keypoint_image_path': similar_kp_output_path.replace('\\', '/') if similar_kp_output_path else None,
                 'simclr_similarity': float(simclr_score),
                 'keypoint_similarity': float(keypoint_similarity),
-                'combined_similarity': float(combined_similarity)
-            })
-            
+                'combined_similarity': float(combined_similarity),
+                'db_info': db_info
+            }
+            print(f"[DEBUG] result_dict({i+1}): {result_dict}")
+            results.append(result_dict)
             print(f"    ✅ SimCLR: {simclr_score:.4f}, 키포인트: {keypoint_similarity:.4f}, 복합: {combined_similarity:.4f}")
-        
-        # 복합 유사도로 재정렬
         results.sort(key=lambda x: x['combined_similarity'], reverse=True)
         print("🔍 단계 4: 복합 유사도로 재정렬 완료")
-        
-        # 순위 업데이트
         for i, result in enumerate(results):
             result['rank'] = i + 1
-        
-        # DB 정보 가져오기 (메타데이터용, 최적화)
+        print(f"[DEBUG] 최종 results: {results}")
         try:
             from database import get_all_dogs
             total_dogs = len(get_all_dogs())
         except:
-            total_dogs = 10000  # 폴백값
-        
-        # 처리 시간 계산
+            total_dogs = 10000
         processing_time = time.time() - start_time
-        
+        print(f"[DEBUG] 전체 처리 시간: {processing_time:.2f}초")
         return JSONResponse({
             'success': True,
             'query_image': file_location.replace('\\', '/'),
             'query_keypoint_image': query_kp_output_path.replace('\\', '/') if query_kp_output_path else None,
             'results': results,
-            'mode': 'real_model',
-            # 검색 메타데이터 추가
+            'mode': 'real_model_db_public_url',
             'search_metadata': {
                 'database_size': total_dogs,
-                'images_with_data': total_dogs,  # 실제 모델에서는 모든 이미지 사용 가정
+                'images_with_data': total_dogs,
                 'searched_results': len(results),
                 'confidence_threshold': 0.60,
-                'algorithm': 'SimCLR + AP-10K Hybrid AI',
+                'algorithm': 'SimCLR + AP-10K Hybrid AI (DB public_url)',
                 'processing_time': round(processing_time, 2),
-                'model_version': 'v2.1',
+                'model_version': 'v2.1-db-public-url',
                 'feature_dimension': 2048
             }
         })
-        
     except Exception as e:
         print(f"❌ 실제 모델 검색 중 오류: {e}")
         import traceback
