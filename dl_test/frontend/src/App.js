@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './App.css';
-import SearchChatbotModal from './SearchChatbotModal';
-import SearchPetPage from './SearchPetPage';
+import SearchMyDog from './SearchMyDog';
+import SearchedDogList from './SearchedDogList';
 import DogDetailView from './DogDetailView';
 
 function App() {
@@ -10,16 +10,18 @@ function App() {
   const [selectedDog, setSelectedDog] = useState(null);
   const [originalImage, setOriginalImage] = useState(null);
   const [queryKeypointImage, setQueryKeypointImage] = useState(null);
+  const [searchMetadata, setSearchMetadata] = useState(null);
 
-  // SearchChatbotModal에서 검색 완료 시 호출
-  const handleSearchResults = (results, originalImg, queryKeypointImg) => {
+  // SearchMyDog에서 검색 완료 시 호출
+  const handleSearchResults = (results, originalImg, queryKeypointImg, metadata) => {
     setSearchResults(results);
     setOriginalImage(originalImg);
     setQueryKeypointImage(queryKeypointImg);
+    setSearchMetadata(metadata);
     setCurrentPage('gallery');
   };
 
-  // SearchPetPage에서 강아지 선택 시 호출
+  // SearchedDogList에서 강아지 선택 시 호출
   const handleSelectDog = (dog) => {
     setSelectedDog(dog);
     setCurrentPage('detail');
@@ -32,6 +34,7 @@ function App() {
     setSelectedDog(null);
     setOriginalImage(null);
     setQueryKeypointImage(null);
+    setSearchMetadata(null);
   };
 
   // 갤러리로 돌아가기 (상세에서)
@@ -43,18 +46,19 @@ function App() {
   return (
     <div className="App">
       {currentPage === 'search' && (
-        <SearchChatbotModal
+        <SearchMyDog
           onClose={handleBackToSearch}
           onSearchResults={handleSearchResults}
         />
       )}
 
       {currentPage === 'gallery' && (
-        <SearchPetPage
+        <SearchedDogList
           searchResults={searchResults}
           onSelectDog={handleSelectDog}
           onBackToSearch={handleBackToSearch}
           originalImage={originalImage}
+          queryKeypointImage={queryKeypointImage}
         />
       )}
 
@@ -63,6 +67,7 @@ function App() {
           dogData={selectedDog}
           onBack={handleBackToGallery}
           queryKeypointImage={queryKeypointImage}
+          searchMetadata={searchMetadata}
         />
       )}
     </div>

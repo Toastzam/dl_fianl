@@ -1,8 +1,60 @@
 import React from 'react';
 
-const DogDetailView = ({ dogData, onBack, queryKeypointImage }) => {
+// 입양상태 변환 함수
+const getAdoptionStatusText = (status) => {
+  if (!status) return '정보 없음';
+  
+  const statusMap = {
+    'PREPARING': '입양준비중',
+    'APPLY_AVAILABLE': '입양가능',
+    'ADOPTED': '입양완료',
+    'HOLD': '보류',
+    'UNAVAILABLE': '입양불가'
+  };
+  
+  return statusMap[status] || status;
+};
+
+// 성별 변환 함수
+const getGenderText = (gender) => {
+  if (!gender) return '정보 없음';
+  
+  const genderMap = {
+    'M': '수컷',
+    'F': '암컷',
+    'Q': '알수없음'
+  };
+  
+  return genderMap[gender] || gender;
+};
+
+const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) => {
   // 디버깅 정보
-  console.log('DogDetailView props:', { dogData, queryKeypointImage });
+  console.log('DogDetailView props:', { dogData, queryKeypointImage, searchMetadata });
+  
+  // API 서버 주소 설정 (다른 로컬에서 접속 가능)
+  const getApiBaseUrl = () => {
+    // 환경변수가 있으면 사용, 없으면 자동 선택
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    }
+    
+    // 개발 환경에서는 프록시 사용 (CORS 우회)
+    if (import.meta.env.DEV) {
+      return '/ai-api'; // Vite 프록시 경로 사용
+    }
+    
+    // localhost로 접속 중인지 확인
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (isLocalhost) {
+      // localhost에서 실행 중이면 localhost 사용
+      return 'http://localhost:8001';
+    } else {
+      // 다른 IP에서 접속 중이면 실제 IP 사용
+      return 'http://192.168.0.46:8001';
+    }
+  };
   
   // 기본 더미 데이터
   const defaultDogData = {
@@ -164,7 +216,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage }) => {
                 justifyContent: 'center'
               }}>
                 <img
-                  src={`http://localhost:8001/api/image/${currentDog.keypoint_image_path}`}
+                  src={`${getApiBaseUrl()}/image/${currentDog.keypoint_image_path}`}
                   alt="유사한 강아지 키포인트"
                   style={{
                     maxWidth: '100%',
@@ -418,8 +470,10 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage }) => {
             </h4>
             <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>SimCLR 벡터 차원:</span>
-                <span style={{ fontWeight: 'bold' }}>2048D</span>
+                <span>특징 벡터 차원:</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {searchMetadata?.feature_dimension || '2048'}D
+                </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>키포인트 개수:</span>
@@ -427,11 +481,15 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage }) => {
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>분석 시간:</span>
-                <span style={{ fontWeight: 'bold' }}>0.34초</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {searchMetadata?.processing_time || '0.34'}초
+                </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>유클리드 거리:</span>
-                <span style={{ fontWeight: 'bold' }}>{(2 - currentDog.combined_similarity * 2).toFixed(3)}</span>
+                <span>모델 버전:</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {searchMetadata?.model_version || 'v2.1'}
+                </span>
               </div>
             </div>
           </div>
@@ -458,19 +516,27 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage }) => {
             <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>데이터베이스 크기:</span>
-                <span style={{ fontWeight: 'bold' }}>10,000장</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {searchMetadata?.database_size?.toLocaleString() || '10,000'}장
+                </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>검색된 유사 이미지:</span>
-                <span style={{ fontWeight: 'bold' }}>50장</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {searchMetadata?.searched_results || '5'}장
+                </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>신뢰도 임계값:</span>
-                <span style={{ fontWeight: 'bold' }}>0.60</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {searchMetadata?.confidence_threshold || '0.60'}
+                </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>매칭 알고리즘:</span>
-                <span style={{ fontWeight: 'bold' }}>Hybrid AI</span>
+                <span style={{ fontWeight: 'bold', fontSize: '11px' }}>
+                  {searchMetadata?.algorithm || 'Hybrid AI'}
+                </span>
               </div>
             </div>
           </div>
@@ -492,24 +558,51 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage }) => {
               alignItems: 'center',
               gap: '8px'
             }}>
-              📏 신체 특징
+              📏 강아지 정보
             </h4>
             <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>체형 비율:</span>
-                <span style={{ fontWeight: 'bold' }}>중형견</span>
+                <span>성별:</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {getGenderText(currentDog.gender_code || currentDog.gender) || '정보없음'}
+                </span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>귀 모양:</span>
-                <span style={{ fontWeight: 'bold' }}>드롭 이어</span>
+                <span>견종:</span>
+                <span style={{ fontWeight: 'bold' }}>{currentDog.breed || '믹스견'}</span>
               </div>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>꼬리 형태:</span>
-                <span style={{ fontWeight: 'bold' }}>깃털형</span>
+                <span>중성화:</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {currentDog.neutered === true ? '완료 ✅' : 
+                   currentDog.neutered === false ? '미완료 ❌' : 
+                   (currentDog.neutered || '정보없음')}
+                </span>
+              </div>
+              <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>체중:</span>
+                <span style={{ fontWeight: 'bold' }}>
+                  {currentDog.weight ? `${currentDog.weight}kg` : '정보없음'}
+                </span>
+              </div>
+              <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>색상:</span>
+                <span style={{ fontWeight: 'bold' }}>{currentDog.color || '정보없음'}</span>
+              </div>
+              <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                <span>입양상태:</span>
+                <span style={{ fontWeight: 'bold' }}>{getAdoptionStatusText(currentDog.adoption_status_code || currentDog.adoption_status) || '정보없음'}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>털 길이:</span>
-                <span style={{ fontWeight: 'bold' }}>중간털</span>
+                <span>특징:</span>
+                <span style={{ fontWeight: 'bold', maxWidth: '120px', textAlign: 'right' }}>
+                  {currentDog.description ? 
+                    (currentDog.description.length > 15 ? 
+                      `${currentDog.description.substring(0, 15)}...` : 
+                      currentDog.description
+                    ) : '정보없음'
+                  }
+                </span>
               </div>
             </div>
           </div>

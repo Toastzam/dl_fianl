@@ -15,29 +15,19 @@ from mmengine import Config
 from mmpose.structures import PoseDataSample
 from mmengine.structures import InstanceData # bbox를 담기 위해 필요
 
-# --- SimCLR 특징 검색 함수 임포트 (이전 단계에서 작성한 파일) ---
-try:
-    from training.search_similar_dogs import search_similar_dogs
-except ImportError:
-    try:
-        from .search_similar_dogs import search_similar_dogs
-    except ImportError:
-        from search_similar_dogs import search_similar_dogs 
-except ImportError:
-    try:
-        from .search_similar_dogs import search_similar_dogs 
-    except ImportError:
-        from search_similar_dogs import search_similar_dogs 
+# --- SimCLR 특징 검색 함수는 필요시 동적으로 임포트 ---
+# 순환 참조 방지를 위해 주석 처리
+# search_similar_dogs 함수는 backend에서 직접 임포트하여 사용 
 
 # --- AP-10K 모델 및 설정 경로 ---
-MMPose_ROOT = 'C:/dl_final/mm_pose/mmpose' # 여기가 사용자 이미지 업로드 경로
+MMPose_ROOT = 'C:/dl_final/dl_fianl/mm_pose/mmpose' # 경로 수정: dl_fianl로 변경
 
-# 설정 파일 경로 (사용자님께서 제공해주신 정확한 경로와 파일명 사용)
+# 설정 파일 경로 
 AP10K_CONFIG_FILE = os.path.join(MMPose_ROOT, 'configs', 'animal_2d_keypoint', 
-                                 'topdown_heatmap', 'ap10k', 'td-hm_hrnet-w32_8xb64-210e_ap10k-256x256.py') # 🚨 이 부분을 반드시 수정하세요! 🚨
+                                 'topdown_heatmap', 'ap10k', 'td-hm_hrnet-w32_8xb64-210e_ap10k-256x256.py') 
 
-# 체크포인트 파일 경로 (사용자님께서 제공해주신 정확한 파일명 사용)
-AP10K_CHECKPOINT_FILE = os.path.join(MMPose_ROOT, 'checkpoints', 'hrnet_w32_ap10k_256x256-18aac840_20211029.pth') # 🚨 이 부분을 반드시 수정하세요! 🚨
+# 체크포인트 파일 경로 
+AP10K_CHECKPOINT_FILE = os.path.join(MMPose_ROOT, 'checkpoints', 'hrnet_w32_ap10k_256x256-18aac840_20211029.pth') 
 
 # --- SimCLR 관련 설정 (이전 파일들에서 가져옴) ---
 SIMCLR_MODEL_PATH = 'models/simclr_vit_dog_model.pth' 
@@ -310,6 +300,16 @@ if __name__ == "__main__":
     else:
         print(f"\n쿼리 이미지: {query_image_path}")
         print("SimCLR 기반 유사 강아지 검색 시작...")
+        
+        # 동적으로 search_similar_dogs 함수 임포트 (순환 참조 방지)
+        try:
+            from training.search_similar_dogs import search_similar_dogs
+        except ImportError:
+            try:
+                from .search_similar_dogs import search_similar_dogs
+            except ImportError:
+                from search_similar_dogs import search_similar_dogs
+        
         top_similar_dogs_simclr = search_similar_dogs(
             query_image_path=query_image_path, 
             top_k=5,

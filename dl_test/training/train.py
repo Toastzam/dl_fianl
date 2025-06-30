@@ -6,6 +6,11 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm # 진행 상황 바를 보여주는 라이브러리
 import math
 
+# TensorFlow 메시지 숨기기
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+
 # --- AMP 관련 추가/변경 ---
 from torch.cuda.amp import autocast, GradScaler # 새로 임포트
 
@@ -18,7 +23,7 @@ from dataset import StanfordDogsDataset, get_simclr_transforms
 BATCH_SIZE = 64 # 한 번에 처리할 이미지 묶음의 크기. GPU 메모리에 따라 조절.
 IMAGE_SIZE = 224 # 이미지 크기 (ViT 모델 입력 크기에 맞춰야 함)
 OUT_DIM = 128 # SimCLR 임베딩 벡터의 차원
-EPOCHS = 40 # 총 훈련 에폭 수 (시간이 오래 걸리므로 초기엔 작게 시작)
+EPOCHS = 10 # 총 훈련 에폭 수 (시간이 오래 걸리므로 초기엔 작게 시작)
 LEARNING_RATE = 3e-4 # 학습률
 WEIGHT_DECAY = 1e-6 # 가중치 감소 (L2 정규화 효과)
 TEMPERATURE = 0.07 # SimCLR Loss 계산 시 사용되는 온도 파라미터 (논문 권장 값)

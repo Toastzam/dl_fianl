@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css'; // 이 파일도 있을 거예요
-import App from './App.jsx'; // App.jsx로 테스트
+import App from './App.js'; // App.jsx로 테스트
 // import reportWebVitals from './reportWebVitals';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

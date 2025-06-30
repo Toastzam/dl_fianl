@@ -1,11 +1,35 @@
 import React, { useState, useRef } from 'react';
 
-const SearchChatbotModal = ({ onClose, onSearchResults }) => {
+const SearchMyDog = ({ onClose, onSearchResults }) => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
   const fileInputRef = useRef(null);
+
+  // API 서버 주소 설정 (다른 로컬에서 접속 가능)
+  const getApiBaseUrl = () => {
+    // 환경변수가 있으면 사용, 없으면 자동 선택
+    if (import.meta.env.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    }
+    
+    // 개발 환경에서는 프록시 사용 (CORS 우회)
+    if (import.meta.env.DEV) {
+      return '/ai-api'; // Vite 프록시 경로 사용
+    }
+    
+    // localhost로 접속 중인지 확인
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    
+    if (isLocalhost) {
+      // localhost에서 실행 중이면 localhost 사용
+      return 'http://localhost:8001';
+    } else {
+      // 다른 IP에서 접속 중이면 실제 IP 사용
+      return 'http://192.168.0.46:8001';
+    }
+  };
 
   // 파일 선택 처리
   const handleFileSelect = (event) => {
@@ -30,28 +54,53 @@ const SearchChatbotModal = ({ onClose, onSearchResults }) => {
     setLoading(true);
     setMessage('강아지 유사도 분석 중...');
 
+    // 디버깅: API URL 확인
+    const apiUrl = getApiBaseUrl();
+    console.log('🔍 API URL:', apiUrl);
+    console.log('🌐 현재 hostname:', window.location.hostname);
+    console.log('📁 업로드할 파일:', selectedFile.name, selectedFile.type);
+
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const response = await fetch('http://localhost:8001/api/upload_and_search/', {
+      const fullUrl = `${apiUrl}/upload_and_search/`;
+      console.log('📡 전체 요청 URL:', fullUrl);
+
+      const response = await fetch(fullUrl, {
         method: 'POST',
         body: formData,
       });
 
+      console.log('📬 응답 상태:', response.status, response.statusText);
+      
       if (!response.ok) {
-        throw new Error('검색 중 오류가 발생했습니다.');
+        throw new Error(`서버 오류: ${response.status} ${response.statusText}`);
       }
 
       const data = await response.json();
+      console.log('📦 응답 데이터:', data);
       
       if (data.success) {
-        // 검색 결과, 원본 이미지, 키포인트 이미지를 부모 컴포넌트로 전달하고 SearchPetPage로 이동
+        console.log('🎯 검색 결과 개수:', data.results?.length || 0);
+        console.log('🖼️  검색 결과 이미지 정보:');
+        data.results?.forEach((dog, index) => {
+          console.log(`  ${index + 1}. ID: ${dog.id}, 이름: ${dog.name || '이름없음'}`);
+          console.log(`     이미지 URL: ${dog.image_url || dog.image_path}`);
+          console.log(`     견종: ${dog.breed} (코드: ${dog.breed_code})`);
+          console.log(`     성별: ${dog.gender} (코드: ${dog.gender_code})`);
+          console.log(`     입양상태: ${dog.adoption_status} (코드: ${dog.adoption_status_code})`);
+          console.log(`     유사도: ${dog.combined_similarity || dog.overall_similarity}`);
+        });
+        
+        console.log('📊 검색 메타데이터:', data.search_metadata);
+        
+        // 검색 결과, 원본 이미지, 키포인트 이미지, 메타데이터를 부모 컴포넌트로 전달
         const queryKeypointImageUrl = data.query_keypoint_image 
-          ? `http://localhost:8001/api/image/${data.query_keypoint_image}`
+          ? `${getApiBaseUrl()}/image/${data.query_keypoint_image}`
           : null;
         
-        onSearchResults(data.results, previewUrl, queryKeypointImageUrl);
+        onSearchResults(data.results, previewUrl, queryKeypointImageUrl, data.search_metadata);
         setMessage('검색 완료! 결과를 확인해보세요.');
       } else {
         setMessage('검색에 실패했습니다. 다시 시도해주세요.');
@@ -72,32 +121,18 @@ const SearchChatbotModal = ({ onClose, onSearchResults }) => {
   return (
     <div
       style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: '#f8f9fa',
-        zIndex: 1001,
+        width: '100%',
+        maxWidth: '600px',
+        margin: '0 auto',
+        backgroundColor: 'white',
+        borderRadius: '20px',
+        boxShadow: '0 10px 30px rgba(0,0,0,0.1)',
+        overflow: 'hidden',
         display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '20px',
+        flexDirection: 'column',
+        minHeight: '500px',
       }}
     >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: '600px',
-          backgroundColor: 'white',
-          borderRadius: '20px',
-          boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          minHeight: '500px',
-        }}
-      >
         {/* 헤더 */}
         <div
           style={{
@@ -237,6 +272,7 @@ const SearchChatbotModal = ({ onClose, onSearchResults }) => {
               cursor: !selectedFile || loading ? 'not-allowed' : 'pointer',
               transition: 'all 0.3s ease',
               boxShadow: !selectedFile || loading ? 'none' : '0 5px 15px rgba(255, 107, 107, 0.3)',
+              marginBottom: '15px'
             }}
             onMouseOver={(e) => {
               if (!loading && selectedFile) {
@@ -269,9 +305,8 @@ const SearchChatbotModal = ({ onClose, onSearchResults }) => {
             </div>
           </div>
         </div>
-      </div>
     </div>
   );
 };
 
-export default SearchChatbotModal;
+export default SearchMyDog;

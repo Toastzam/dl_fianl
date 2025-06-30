@@ -17,8 +17,6 @@ BATCH_SIZE = 128
 FEATURES_SAVE_FILE = 'db_features.npy'
 IMAGE_PATHS_SAVE_FILE = 'db_image_paths.npy'
 
-# --- 이곳으로 FeatureExtractionDataset 클래스를 옮겨주세요! ---
-# 즉, extract_and_save_db_features 함수 정의보다 위에 위치해야 합니다.
 class FeatureExtractionDataset(torch.utils.data.Dataset):
     def __init__(self, root_dir, transform=None):
         self.root_dir = root_dir
@@ -42,8 +40,6 @@ class FeatureExtractionDataset(torch.utils.data.Dataset):
         if self.transform:
             image = self.transform(image)
         return image, img_path 
-# --- FeatureExtractionDataset 클래스 이동 끝 ---
-
 
 def extract_and_save_db_features(
     data_root=DATA_ROOT, 
@@ -61,12 +57,9 @@ def extract_and_save_db_features(
         model_path=model_path, out_dim=out_dim, image_size=image_size
     )
 
-    # FeatureExtractionDataset이 이제 글로벌 스코프에 있으므로 정상적으로 참조됩니다.
     db_dataset = FeatureExtractionDataset(root_dir=data_root, transform=preprocess_transform) 
+    
     # num_workers는 멀티프로세싱을 사용하여 데이터 로딩을 가속화합니다.
-    # Windows 환경에서 DataLoader의 num_workers를 사용할 때는
-    # 이 스크립트의 실행 코드를 'if __name__ == "__main__":' 블록 안에 넣어야 합니다.
-    # 이미 그렇게 되어 있으니 괜찮습니다.
     db_dataloader = DataLoader(db_dataset, batch_size=batch_size, shuffle=False, 
                                num_workers=os.cpu_count() // 2 or 1, pin_memory=True) # 최소 1로 설정
 
@@ -91,8 +84,5 @@ def extract_and_save_db_features(
     print(f"저장된 이미지 경로 파일: {image_paths_save_file} (총 {len(all_image_paths)}개)")
     print(f"이제 이 파일을 불러와서 사용자 이미지와 유사도를 비교할 수 있습니다.")
 
-
 if __name__ == "__main__":
-    # Windows에서 DataLoader의 num_workers가 0보다 클 때 필요합니다.
-    # 이 블록 안에 전체 실행 코드를 넣어두면 됩니다.
     extract_and_save_db_features()
