@@ -215,20 +215,30 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <img
-                  src={`${getApiBaseUrl()}/image/${currentDog.keypoint_image_path}`}
-                  alt="유사한 강아지 키포인트"
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '350px',
-                    objectFit: 'contain',
-                    borderRadius: '10px'
-                  }}
-                  onError={(e) => {
-                    console.log('키포인트 이미지 로드 실패:', e.target.src);
-                    e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="300" height="300" fill="%23333"/><circle cx="150" cy="80" r="6" fill="red" fill-opacity="0.3"/><circle cx="120" cy="110" r="6" fill="red" fill-opacity="0.3"/><circle cx="180" cy="110" r="6" fill="red" fill-opacity="0.3"/><circle cx="150" cy="180" r="6" fill="red" fill-opacity="0.3"/><circle cx="110" cy="220" r="6" fill="red" fill-opacity="0.3"/><circle cx="190" cy="220" r="6" fill="red" fill-opacity="0.3"/><line x1="150" y1="80" x2="120" y2="110" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="180" y2="110" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="150" y2="180" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="110" y2="220" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="190" y2="220" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><text x="150" y="260" text-anchor="middle" fill="white" font-family="Arial" font-size="16">키포인트 이미지</text></svg>';
-                  }}
-                />
+                {/* 키포인트 이미지 경로 앞 슬래시 제거 함수 */}
+                {(() => {
+                  const getKeypointImageUrl = (keypointPath) => {
+                    if (!keypointPath) return '';
+                    const cleanPath = keypointPath.startsWith('/') ? keypointPath.slice(1) : keypointPath;
+                    return `${getApiBaseUrl()}/image/${cleanPath}`;
+                  };
+                  return (
+                    <img
+                      src={getKeypointImageUrl(currentDog.keypoint_image_path)}
+                      alt="유사한 강아지 키포인트"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '350px',
+                        objectFit: 'contain',
+                        borderRadius: '10px'
+                      }}
+                      onError={(e) => {
+                        console.log('키포인트 이미지 로드 실패:', e.target.src);
+                        e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="300" height="300" fill="%23333"/><circle cx="150" cy="80" r="6" fill="red" fill-opacity="0.3"/><circle cx="120" cy="110" r="6" fill="red" fill-opacity="0.3"/><circle cx="180" cy="110" r="6" fill="red" fill-opacity="0.3"/><circle cx="150" cy="180" r="6" fill="red" fill-opacity="0.3"/><circle cx="110" cy="220" r="6" fill="red" fill-opacity="0.3"/><circle cx="190" cy="220" r="6" fill="red" fill-opacity="0.3"/><line x1="150" y1="80" x2="120" y2="110" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="180" y2="110" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="150" y2="180" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="110" y2="220" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="190" y2="220" stroke="yellow" stroke-width="3" stroke-opacity="0.3"/><text x="150" y="260" text-anchor="middle" fill="white" font-family="Arial" font-size="16">키포인트 이미지</text></svg>';
+                      }}
+                    />
+                  );
+                })()}
               </div>
             </div>
           </div>

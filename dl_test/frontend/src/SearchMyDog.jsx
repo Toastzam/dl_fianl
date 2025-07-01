@@ -55,14 +55,27 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
       });
 
       console.log('📬 응답 상태:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        throw new Error(`서버 오류: ${response.status} ${response.statusText}`);
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        setMessage('서버 응답을 해석할 수 없습니다. 관리자에게 문의하세요.');
+        setLoading(false);
+        return;
+      }
+      console.log('📦 응답 데이터:', data);
+
+      // 강아지 이미지가 아닐 때(백엔드에서 판별 실패)
+      if (!data.success && data.error === 'not_a_dog') {
+        let debugInfo = '';
+        if (data.dog_check) {
+          debugInfo = `\n(디버그: 키포인트 ${data.dog_check.num_keypoints}개, 평균신뢰도 ${data.dog_check.avg_score?.toFixed(2)}, SimCLR최대유사도 ${data.dog_check.max_simclr_similarity?.toFixed(3)})`;
+        }
+        setMessage((data.message || '강아지 이미지가 아닙니다.') + debugInfo);
+        return;
       }
 
-      const data = await response.json();
-      console.log('📦 응답 데이터:', data);
-      
       if (data.success) {
         console.log('🎯 검색 결과 개수:', data.results?.length || 0);
         console.log('🖼️  검색 결과 이미지 정보:');
@@ -74,18 +87,25 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
           console.log(`     입양상태: ${dog.adoption_status} (코드: ${dog.adoption_status_code})`);
           console.log(`     유사도: ${dog.combined_similarity || dog.overall_similarity}`);
         });
-        
+
         console.log('📊 검색 메타데이터:', data.search_metadata);
-        
+
+
         // 검색 결과, 원본 이미지, 키포인트 이미지, 메타데이터를 부모 컴포넌트로 전달
-        const queryKeypointImageUrl = data.query_keypoint_image 
-          ? `${getApiBaseUrl()}/image/${data.query_keypoint_image}`
-          : null;
-        
+        // 반드시 /api/image/output_keypoints/ 경로로 접근해야 동적 생성/서빙이 보장됨
+        let queryKeypointImageUrl = null;
+        if (data.query_keypoint_image) {
+          let filename = data.query_keypoint_image;
+          if (filename.includes('/')) {
+            filename = filename.split('/').pop();
+          }
+          queryKeypointImageUrl = `${getApiBaseUrl()}/api/image/output_keypoints/${filename}`;
+        }
+
         onSearchResults(data.results, previewUrl, queryKeypointImageUrl, data.search_metadata);
         setMessage('검색 완료! 결과를 확인해보세요.');
       } else {
-        setMessage('검색에 실패했습니다. 다시 시도해주세요.');
+        setMessage(data.message || '검색에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
       console.error('검색 오류:', error);

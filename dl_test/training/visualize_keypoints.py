@@ -1,3 +1,14 @@
+import re
+def normalize_filename(filename):
+    # 파일명에서 연속된 특수문자, 공백, 괄호 등은 모두 단일 언더스코어로 치환
+    name, ext = os.path.splitext(filename)
+    # 1. 괄호, 공백, 특수문자 모두 _로 치환
+    name = re.sub(r'[^A-Za-z0-9._-]+', '_', name)
+    # 2. 앞뒤 _ 제거
+    name = name.strip('_')
+    # 3. 연속된 _는 하나로 축소
+    name = re.sub(r'_+', '_', name)
+    return name + ext
 import torch
 import numpy as np
 import os
@@ -77,24 +88,40 @@ def detect_and_visualize_keypoints(
     ap10k_model, 
     device, 
     visualizer, 
-    output_dir: str = 'output_keypoints'
+    output_dir: str = None,
+    output_path: str = None
 ):
     """
     단일 이미지에서 키포인트를 검출하고 시각화하여 저장합니다.
     image_path가 http/https로 시작하면 URL에서 이미지를 불러옵니다.
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # 모든 output_keypoints 저장/서빙 경로를 C:/dl_final/dl_fianl/output_keypoints로 강제 통일
+    fixed_output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'output_keypoints'))
+    print(f"[DEBUG] __file__ 위치: {os.path.abspath(__file__)}")
+    print(f"[DEBUG] fixed_output_dir (dl_fianl/output_keypoints): {fixed_output_dir}")
+    if not os.path.exists(fixed_output_dir):
+        os.makedirs(fixed_output_dir)
+    output_dir = fixed_output_dir
+    # FastAPI StaticFiles 마운트 경로도 반드시 동일하게 맞춰야 함
+    print(f"[INFO] 모든 output_keypoints 저장/서빙 경로를 C:/dl_final/dl_fianl/output_keypoints로 강제 통일합니다.")
 
-    # --- 이미지 로딩 (로컬/URL 모두 지원) ---
+    # --- 이미지 로딩 (로컬/URL 모두 지원) 및 256x256 리사이즈 ---
     img_rgb = None
     img_source = None
+    def pad_to_square(img, fill_color=(255,255,255)):
+        w, h = img.size
+        if w == h:
+            return img
+        size = max(w, h)
+        new_img = Image.new('RGB', (size, size), fill_color)
+        new_img.paste(img, ((size - w) // 2, (size - h) // 2))
+        return new_img
+
     if image_path.startswith('http://') or image_path.startswith('https://'):
         try:
             response = requests.get(image_path, timeout=10)
             response.raise_for_status()
             img_source = Image.open(io.BytesIO(response.content)).convert('RGB')
-            img_rgb = np.array(img_source)
         except Exception as e:
             print(f"오류: URL에서 이미지를 불러올 수 없습니다: {image_path}\n{e}")
             return None, None
@@ -103,33 +130,73 @@ def detect_and_visualize_keypoints(
             print(f"오류: 이미지를 로드할 수 없습니다: {image_path}. 파일이 존재하는지 확인하세요.")
             return None, None
         img_source = Image.open(image_path).convert('RGB')
-        img_rgb = np.array(img_source)
 
+    # 정사각형 패딩 후 256x256 리사이즈 및 디버그 이미지 저장
+    img_source = pad_to_square(img_source)
+    # 디버그: 패딩된 이미지 저장
+    debug_pad_path = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}_padded.jpg")
+    img_source.save(debug_pad_path)
+    print(f"[DEBUG] 패딩 이미지 저장: {debug_pad_path}")
+
+    img_resized = img_source.resize((256, 256), Image.BILINEAR)
+    # 디버그: 리사이즈된 이미지 저장
+    debug_resize_path = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}_resized256.jpg")
+    Image.fromarray(np.array(img_resized)).save(debug_resize_path)
+    print(f"[DEBUG] 256x256 리사이즈 이미지 저장: {debug_resize_path}")
+
+    img_rgb = np.array(img_resized)
+    print(f"[DEBUG] img_rgb shape: {img_rgb.shape}, dtype: {img_rgb.dtype}, min: {img_rgb.min()}, max: {img_rgb.max()}")
+
+    # --- 디버깅: 전처리된 이미지 shape, dtype, min/max 값 출력 및 저장 ---
+    print(f"[DEBUG] Preprocessed image shape: {img_rgb.shape}, dtype: {img_rgb.dtype}, min: {img_rgb.min()}, max: {img_rgb.max()}")
+    # 중간 이미지 저장 (디버깅용)
+    debug_padded_path = os.path.join(output_dir, 'debug_padded_' + os.path.basename(image_path))
+    debug_resized_path = os.path.join(output_dir, 'debug_resized_' + os.path.basename(image_path))
+    try:
+        img_source.save(debug_padded_path)
+        Image.fromarray(img_rgb).save(debug_resized_path)
+        print(f"[DEBUG] Saved padded image: {debug_padded_path}")
+        print(f"[DEBUG] Saved resized image: {debug_resized_path}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to save debug images: {e}")
     img_height, img_width = img_rgb.shape[:2]
+    # 원본 크기 정보도 pose_results에 포함 (아래에서 img_width, img_height로 저장)
 
     # MMPose의 고수준 추론 API 사용
     from mmpose.apis import inference_topdown
     bbox = np.array([[0, 0, img_width, img_height]], dtype=np.float32)
 
     # inference_topdown은 numpy array도 입력 가능
+
     pose_results = inference_topdown(ap10k_model, img_rgb, bbox)
 
+    # --- 디버깅: pose_results가 비었을 때 shape, dtype, 파일 존재 여부 출력 ---
     if not pose_results:
+        print(f"[DEBUG] pose_results is empty for {image_path}")
+        print(f"[DEBUG] Preprocessed image shape: {img_rgb.shape}, dtype: {img_rgb.dtype}, min: {img_rgb.min()}, max: {img_rgb.max()}")
+        print(f"[DEBUG] Does padded image exist? {os.path.exists(debug_padded_path)}")
+        print(f"[DEBUG] Does resized image exist? {os.path.exists(debug_resized_path)}")
         print(f"경고: {image_path}에서 키포인트를 검출할 수 없었습니다. (동물이 없거나 너무 작을 수 있음)")
         return None, None
 
     vis_img_rgb = draw_advanced_keypoints_rgb(img_rgb.copy(), pose_results)
 
-    # 파일명 생성 (URL이면 파일명만 추출)
-    base_name = os.path.basename(image_path)
-    if not base_name:
-        base_name = 'remote_image'
-    name_parts = os.path.splitext(base_name)
-    output_filename = f"{name_parts[0]}_keypoints{name_parts[1] if name_parts[1] else '.jpg'}"
-    output_path = os.path.join(output_dir, output_filename)
+    # 파일명 생성 (URL이면 파일명만 추출, 확장자는 항상 .jpg로 강제)
+    if output_path is not None:
+        # 외부에서 경로를 지정한 경우 해당 경로에 저장 (정규화 적용)
+        output_path = os.path.abspath(output_path)
+        output_path = os.path.join(os.path.dirname(output_path), normalize_filename(os.path.basename(output_path)))
+    else:
+        base_name = os.path.basename(image_path)
+        if not base_name:
+            base_name = 'remote_image'
+        base_name = normalize_filename(base_name)
+        name_parts = os.path.splitext(base_name)
+        output_filename = f"{name_parts[0]}_keypoints.jpg"  # 항상 jpg로 저장
+        output_path = os.path.join(output_dir, output_filename)
 
     pil_img = Image.fromarray(vis_img_rgb)
-    pil_img.save(output_path)
+    pil_img.save(output_path, format='JPEG')
     print(f"키포인트 시각화 저장: {output_path}")
 
     # 결과를 이전 형식으로 변환 (width, height 정보 포함)
@@ -190,8 +257,8 @@ def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCL
     kpts2_xy_norm[:, 0] = kpts2_xy[:, 0] / w2
     kpts2_xy_norm[:, 1] = kpts2_xy[:, 1] / h2
 
-    print(f"[DEBUG] kpts1_xy_norm: {kpts1_xy_norm}")
-    print(f"[DEBUG] kpts2_xy_norm: {kpts2_xy_norm}")
+    # print(f"[DEBUG] kpts1_xy_norm: {kpts1_xy_norm}")
+    # print(f"[DEBUG] kpts2_xy_norm: {kpts2_xy_norm}")  # [자동 주석처리] kpts2_xy_norm 디버그 출력
 
     # NaN/Inf 체크
     if np.any(np.isnan(kpts1_xy_norm)) or np.any(np.isnan(kpts2_xy_norm)):
@@ -307,7 +374,7 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
                     else:
                         line_color = colors_bgr['back_legs']
                     
-                    cv2.line(overlay, pt1, pt2, line_color, 3)
+                    cv2.line(overlay, pt1, pt2, line_color, 1, lineType=cv2.LINE_AA)
             
             # 키포인트 점 그리기 (오버레이에)
             for i, (kpt, score) in enumerate(zip(kpts, kpt_scores)):
@@ -324,9 +391,9 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
                     else:  # 뒷다리, 꼬리
                         kpt_color = (0, 165, 255)    # 주황색
                     
-                    # 키포인트 원 그리기
-                    cv2.circle(overlay, pt, 6, kpt_color, -1)
-                    cv2.circle(overlay, pt, 6, (255, 255, 255), 2)  # 흰색 테두리
+                    # 키포인트 원 그리기 (크기 축소)
+                    cv2.circle(overlay, pt, 3, kpt_color, -1)
+                    cv2.circle(overlay, pt, 3, (255, 255, 255), 1)  # 흰색 테두리
     
     # 투명도 적용하여 합성
     result = cv2.addWeighted(img_bgr, 1-alpha, overlay, alpha, 0)

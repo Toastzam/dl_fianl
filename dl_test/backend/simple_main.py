@@ -69,16 +69,21 @@ async def lifespan(app: FastAPI):
     print("🔄 서버 종료 중...")
 
 # FastAPI 앱 (lifespan 포함)
+
+# redirect_slashes=False 옵션 추가로 307 리다이렉트 방지
 app = FastAPI(
     title="Dog Similarity Search API", 
     description="SimCLR + AP-10K 키포인트 기반 강아지 유사도 검색",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False
 )
 
-# 업로드 폴더 설정
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "output_keypoints"
-STATIC_FOLDER = "static"
+
+# 업로드/출력 폴더 절대경로로 고정 (output_keypoints는 반드시 프로젝트 루트)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+UPLOAD_FOLDER = os.path.join(PROJECT_ROOT, "uploads")
+OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "output_keypoints")
+STATIC_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -115,38 +120,54 @@ SIMCLR_IMAGE_SIZE = 224
 DB_FEATURES_FILE = os.path.join(BASE_DIR, '..', 'db_features.npy')
 DB_IMAGE_PATHS_FILE = os.path.join(BASE_DIR, '..', 'db_image_paths.npy')
 
-# Static files 마운트 - 이미지 서빙을 위해 추가
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
-app.mount("/output_keypoints", StaticFiles(directory="output_keypoints"), name="output_keypoints")
+
+
+
+
+# Static files 마운트 - output_keypoints는 반드시 프로젝트 루트 output_keypoints
+app.mount("/static", StaticFiles(directory=STATIC_FOLDER), name="static")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
 app.mount("/training", StaticFiles(directory=os.path.abspath(os.path.join(BASE_DIR, "..", "training"))), name="training")
 
 @app.post("/api/upload_and_search/")
 async def upload_and_search(file: UploadFile = File(...)):
     """실제 업로드 및 유사도 검색 API"""
     try:
-        # 파일 저장
-        file_location = os.path.join(UPLOAD_FOLDER, file.filename)
+        # 파일명 정규화 함수 임포트
+        try:
+            from training.visualize_keypoints import normalize_filename
+        except ImportError:
+            def normalize_filename(filename):
+                import re
+                name, ext = os.path.splitext(filename)
+                name = re.sub(r'[^\w\d가-힣]+', '_', name)
+                name = re.sub(r'_+', '_', name)
+                name = name.strip('_')
+                return name + ext
+
+        # 파일명 정규화 적용
+        normalized_filename = normalize_filename(file.filename)
+        file_location = os.path.join(UPLOAD_FOLDER, normalized_filename)
         with open(file_location, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
-        
+
         print(f"📁 파일 저장 완료: {file_location}")
-        
+
         # 디버깅 정보 출력
         print(f"🔍 MODELS_AVAILABLE: {MODELS_AVAILABLE}")
         print(f"🔍 ap10k_model is not None: {ap10k_model is not None}")
         print(f"🔍 조건 체크: {MODELS_AVAILABLE and ap10k_model is not None}")
-        
+
         if MODELS_AVAILABLE and ap10k_model is not None:
             # 실제 모델 사용
             print("🚀 실제 모델 모드로 진입")
-            return await real_model_search(file_location, file.filename)
+            return await real_model_search(file_location, normalized_filename)
         else:
             # 더미 모드
             print("🔄 더미 모드로 진입")
-            return await dummy_search(file_location, file.filename)
-        
+            return await dummy_search(file_location, normalized_filename)
+
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -159,10 +180,34 @@ async def real_model_search(file_location: str, filename: str):
         print("🔍 실제 모델 사용 - 시작 (DB public_url 기반)")
         # 1. 쿼리 이미지 키포인트 검출
         print("🔍 단계 1: 쿼리 이미지 키포인트 검출")
+        # output_path 인자가 없는 버전: 반환된 경로를 그대로 사용
         query_kp_output_path, query_pose_results = detect_and_visualize_keypoints(
             file_location, ap10k_model, device, visualizer
         )
         print(f"✅ 쿼리 이미지 키포인트 검출 완료: {query_kp_output_path}")
+        # print(f"[DEBUG] query_pose_results: {query_pose_results}")
+
+        # --- 강아지 판별 휴리스틱 1: 키포인트 개수/신뢰도 ---
+        # query_pose_results: [{'keypoints': np.ndarray, ...}, ...] 또는 dict 형식 예상
+        import numpy as np
+        if isinstance(query_pose_results, list) and len(query_pose_results) > 0 and isinstance(query_pose_results[0], dict):
+            kp_data = query_pose_results[0]
+        elif isinstance(query_pose_results, dict):
+            kp_data = query_pose_results
+        else:
+            kp_data = {}
+
+        keypoints = kp_data.get('keypoints', [])
+        # keypoints가 numpy array이고 shape가 (N, 3)일 때 score 추출
+        if isinstance(keypoints, np.ndarray) and keypoints.ndim == 2 and keypoints.shape[1] >= 3:
+            scores = keypoints[:, 2]
+        else:
+            scores = []
+        num_keypoints = len(keypoints) if isinstance(keypoints, np.ndarray) else 0
+        avg_score = float(np.mean(scores)) if isinstance(scores, np.ndarray) and scores.size > 0 else 0.0
+        print(f"[DOG CHECK] keypoints: {num_keypoints}, avg_score: {avg_score:.3f}")
+        # 실제 판별: 키포인트 개수와 평균 신뢰도 기준
+        is_dog_by_kp = (num_keypoints >= 10 and avg_score >= 0.25)
 
         # 2. SimCLR 기반 유사 이미지 검색 (DB public_url만 사용)
         print("🔍 단계 2: SimCLR 기반 유사 이미지 검색 (DB public_url만)")
@@ -170,7 +215,7 @@ async def real_model_search(file_location: str, filename: str):
         pet_images = get_all_pet_images()  # [{'public_url': ..., 'image_vector': ...}, ...]
         print(f"[DEBUG] get_all_pet_images() 반환: {len(pet_images)}개")
         if pet_images:
-            print(f"[DEBUG] pet_images[0] 예시: " + str({k: (str(v)[:100] if k=='image_vector' else v) for k,v in pet_images[0].items()}))
+            pass  # print(f"[DEBUG] pet_images[0] 예시: ...")  # [자동 주석처리] pet_images[0] 예시 출력
         if not pet_images:
             raise Exception("DB에 등록된 강아지 이미지가 없습니다.")
         # 쿼리 이미지 벡터 추출
@@ -183,6 +228,41 @@ async def real_model_search(file_location: str, filename: str):
         print(f"[DEBUG] DB 벡터 shape: {db_vectors.shape}")
         similarities = np.dot(db_vectors, query_vector) / (np.linalg.norm(db_vectors, axis=1) * np.linalg.norm(query_vector) + 1e-8)
         print(f"[DEBUG] similarities: {similarities}")
+        # --- 강아지 판별 휴리스틱 2: SimCLR DB 유사도 ---
+        max_sim = float(np.max(similarities)) if similarities is not None and len(similarities) > 0 else 0.0
+        print(f"[DOG CHECK] SimCLR max similarity to DB: {max_sim:.3f}")
+        SIMCLR_MIN_SIM = 0.28  # 실험적으로 조정 (0.3 미만이면 강아지 아닐 확률 높음)
+        is_dog_by_simclr = (max_sim >= SIMCLR_MIN_SIM)
+
+        # --- 최종 강아지 판별 ---
+        if not (is_dog_by_kp and is_dog_by_simclr):
+            reason = []
+            if not is_dog_by_kp:
+                reason.append(f"키포인트 개수/신뢰도 부족 (개수: {num_keypoints}, 평균: {avg_score:.2f})")
+            if not is_dog_by_simclr:
+                reason.append(f"SimCLR DB 유사도 낮음 (최대: {max_sim:.2f})")
+            msg = "업로드된 이미지는 강아지로 인식되지 않습니다. " + ", ".join(reason)
+            print(f"[DOG CHECK] ❌ {msg}")
+            def to_output_keypoints_url(path):
+                if not path:
+                    return None
+                return f"/output_keypoints/{os.path.basename(path)}"
+            return JSONResponse({
+                'success': False,
+                'error': 'not_a_dog',
+                'message': msg,
+                'query_image': file_location.replace('\\', '/'),
+                'query_keypoint_image': to_output_keypoints_url(query_kp_output_path) if query_kp_output_path else None,
+                'dog_check': {
+                    'is_dog_by_kp': is_dog_by_kp,
+                    'is_dog_by_simclr': is_dog_by_simclr,
+                    'num_keypoints': num_keypoints,
+                    'avg_score': avg_score,
+                    'max_simclr_similarity': max_sim
+                }
+            }, status_code=400)
+
+        # --- 이하 기존 유사도 검색 로직 (강아지로 판별된 경우만) ---
         # top_k 추출
         top_k = 5
         top_indices = similarities.argsort()[::-1][:top_k]
@@ -209,21 +289,17 @@ async def real_model_search(file_location: str, filename: str):
             db_info = sim_result.get('db_info', {}).copy()
             if 'image_vector' in db_info:
                 del db_info['image_vector']
-            # print(f"[DEBUG] db_info({i+1}): {db_info}")
             print(f"  🔍 유사 이미지 {i+1}/{len(similar_results)} 처리: {os.path.basename(image_url)}")
             keypoint_similarity = 0.0
             similar_kp_output_path = None
             try:
-                # print(f"[DEBUG] detect_and_visualize_keypoints 호출: {image_url}")
                 similar_kp_output_path, similar_pose_results = detect_and_visualize_keypoints(
                     image_url, ap10k_model, device, visualizer
                 )
-                # print(f"[DEBUG] 키포인트 결과: {similar_kp_output_path}")
                 if query_pose_results and similar_pose_results:
                     keypoint_similarity = calculate_keypoint_similarity(
                         query_pose_results, similar_pose_results
                     )
-                    # print(f"[DEBUG] keypoint_similarity: {keypoint_similarity}")
             except Exception as e:
                 print(f"⚠️ 키포인트 검출 실패 (URL: {image_url}): {e}")
             combined_similarity = (0.7 * simclr_score) + (0.3 * keypoint_similarity)
@@ -236,14 +312,12 @@ async def real_model_search(file_location: str, filename: str):
                 'combined_similarity': float(combined_similarity),
                 'db_info': db_info
             }
-            # print(f"[DEBUG] result_dict({i+1}): {result_dict}")
             results.append(result_dict)
             print(f"    ✅ SimCLR: {simclr_score:.4f}, 키포인트: {keypoint_similarity:.4f}, 복합: {combined_similarity:.4f}")
         results.sort(key=lambda x: x['combined_similarity'], reverse=True)
         print("🔍 단계 4: 복합 유사도로 재정렬 완료")
         for i, result in enumerate(results):
             result['rank'] = i + 1
-        # print(f"[DEBUG] 최종 results: {results}")
         try:
             from database import get_all_dogs
             total_dogs = len(get_all_dogs())
@@ -251,10 +325,21 @@ async def real_model_search(file_location: str, filename: str):
             total_dogs = 10000
         processing_time = time.time() - start_time
         print(f"[DEBUG] 전체 처리 시간: {processing_time:.2f}초")
+        def to_output_keypoints_url(path):
+            if not path:
+                return None
+            # output_keypoints 폴더 내 파일명만 추출
+            return f"/output_keypoints/{os.path.basename(path)}"
+        # results 내부 keypoint_image_path도 URL로 변환
+        for r in results:
+            if r.get('keypoint_image_path'):
+                r['keypoint_image_path'] = to_output_keypoints_url(r['keypoint_image_path'])
+        # 쿼리 keypoint 이미지도 반환 경로에서 파일명만 추출해서 URL로 반환
+        query_keypoint_url = to_output_keypoints_url(query_kp_output_path)
         return JSONResponse({
             'success': True,
             'query_image': file_location.replace('\\', '/'),
-            'query_keypoint_image': query_kp_output_path.replace('\\', '/') if query_kp_output_path else None,
+            'query_keypoint_image': query_keypoint_url,
             'results': results,
             'mode': 'real_model_db_public_url',
             'search_metadata': {
@@ -545,60 +630,97 @@ async def get_feature_service_info():
 async def serve_image(file_path: str):
     """이미지 파일 서빙 (실제 + 더미)"""
     try:
+
         # 경로 정규화
         file_path = file_path.replace('/', os.sep)
-        
-        # 다양한 경로에서 이미지 찾기
-        possible_paths = [
-            file_path,
-            os.path.join('uploads', file_path),
-            os.path.join('output_keypoints', file_path),
-            os.path.join('../training', file_path),
-            os.path.join('../uploads', file_path),
-            os.path.join('../output_keypoints', file_path),
-            os.path.join('..', file_path)
-        ]
-        
-        # 실제 파일 찾기
-        for path in possible_paths:
-            full_path = os.path.abspath(path)
+
+        # output_keypoints 경로로 시작하면 직접 파일 생성/서빙 로직 수행 (리다이렉트 금지)
+        if file_path.startswith('output_keypoints' + os.sep) or file_path.startswith('output_keypoints/'):
+            # output_keypoints/ 접두어 제거
+            rel_path = file_path.replace('output_keypoints' + os.sep, '').replace('output_keypoints/', '')
+            filename = rel_path.split('/')[-1].split('\\')[-1]
+            full_path = os.path.join(OUTPUT_FOLDER, filename)
+            # print(f"[serve_image] (output_keypoints) 찾는 파일: {filename}")
+            # print(f"[serve_image] (output_keypoints) 절대경로: {full_path}")
+            # print(f"[serve_image] (output_keypoints) 실제 파일 존재: {os.path.exists(full_path) and os.path.isfile(full_path)}")
             if os.path.exists(full_path) and os.path.isfile(full_path):
-                print(f"📷 이미지 서빙: {full_path}")
-                return FileResponse(full_path)
-        
+                # print(f"📷 (output_keypoints) 이미지 서빙: {full_path}")
+                return FileResponse(full_path, media_type="image/jpeg")
+            # 없으면 아래 일반 로직으로 진입 (생성 시도)
+            file_path = filename
+
+        # 파일명만 추출해서 output_keypoints(프로젝트 루트)에서만 찾기
+        filename = file_path.split('/')[-1].split('\\')[-1]
+        full_path = os.path.join(OUTPUT_FOLDER, filename)
+        # print(f"[serve_image] 찾는 파일: {filename}")
+        # print(f"[serve_image] 절대경로: {full_path}")
+        # print(f"[serve_image] 실제 파일 존재: {os.path.exists(full_path) and os.path.isfile(full_path)}")
+        if os.path.exists(full_path) and os.path.isfile(full_path):
+            # print(f"📷 이미지 서빙: {full_path}")
+            return FileResponse(full_path, media_type="image/jpeg")
+
+        # output_keypoints에 파일이 없고, 파일명이 *_keypoints.jpg 형태라면 원본 이미지를 찾아서 생성 시도
+        if filename.endswith('_keypoints.jpg'):
+            # 원본 파일명 추출
+            orig_name = filename.replace('_keypoints.jpg', '')
+            # DB에서 원본 이미지 경로 찾기 (public_url, image_url, image_path 등)
+            from database import get_all_pet_images
+            pet_images = get_all_pet_images()
+            orig_img_path = None
+            for img in pet_images:
+                # 파일명 일치 (확장자 무시)
+                for key in ['public_url', 'image_url', 'image_path', 'file_name']:
+                    v = img.get(key)
+                    if v and os.path.splitext(os.path.basename(str(v)))[0] == orig_name:
+                        orig_img_path = v
+                        break
+                if orig_img_path:
+                    break
+            if orig_img_path:
+                # print(f"[serve_image] 원본 이미지 경로 찾음: {orig_img_path}")
+                try:
+                    # detect_and_visualize_keypoints로 시각화 이미지 생성
+                    from training.visualize_keypoints import detect_and_visualize_keypoints, setup_ap10k_model
+                    # 모델/비주얼라이저는 이미 글로벌로 로드되어 있다고 가정
+                    global ap10k_model, device, visualizer
+                    if ap10k_model is None or device is None or visualizer is None:
+                        ap10k_model, device, visualizer = setup_ap10k_model()
+                    output_path, _ = detect_and_visualize_keypoints(orig_img_path, ap10k_model, device, visualizer)
+                    if output_path and os.path.exists(output_path):
+                        # print(f"[serve_image] 키포인트 시각화 생성 및 서빙: {output_path}")
+                        return FileResponse(output_path, media_type="image/jpeg")
+                except Exception as e:
+                    # print(f"[serve_image] 키포인트 시각화 생성 실패: {e}")
+                    pass
+            else:
+                # print(f"[serve_image] DB에서 원본 이미지 경로를 찾지 못함: {orig_name}")
+                pass
+
         # 파일을 찾지 못했을 경우 더미 이미지 생성
-        print(f"⚠️ 이미지를 찾을 수 없음: {file_path}")
-        print(f"시도한 경로들: {possible_paths}")
-        
+        # print(f"⚠️ 이미지를 찾을 수 없음: {file_path}")
+        # print(f"시도한 경로: {full_path}")
+
         # 더미 이미지 생성 (키포인트 이미지 스타일)
         if 'keypoint' in file_path.lower():
-            # 키포인트 스타일 더미 이미지
             dummy_img = Image.new('RGB', (400, 400), color=(50, 50, 50))
-            # 간단한 키포인트 시뮬레이션 (원과 선)
             from PIL import ImageDraw
             draw = ImageDraw.Draw(dummy_img)
-            
-            # 더미 키포인트 (원들)
             keypoints = [(100, 100), (150, 80), (200, 120), (180, 200), (120, 220)]
             for kp in keypoints:
                 draw.ellipse([kp[0]-5, kp[1]-5, kp[0]+5, kp[1]+5], fill='red')
-            
-            # 더미 골격선
             connections = [(0,1), (1,2), (2,3), (3,4)]
             for conn in connections:
                 draw.line([keypoints[conn[0]], keypoints[conn[1]]], fill='yellow', width=2)
-                
         else:
-            # 일반 강아지 더미 이미지
             dummy_img = Image.new('RGB', (224, 224), color=(150, 100, 50))
             from PIL import ImageDraw
             draw = ImageDraw.Draw(dummy_img)
             draw.text((50, 100), "강아지 이미지", fill='white')
-        
+
         temp_path = f"temp_{os.path.basename(file_path)}.jpg"
         dummy_img.save(temp_path, 'JPEG')
-        return FileResponse(temp_path)
-        
+        return FileResponse(temp_path, media_type="image/jpeg")
+
     except Exception as e:
         print(f"❌ 이미지 서빙 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
