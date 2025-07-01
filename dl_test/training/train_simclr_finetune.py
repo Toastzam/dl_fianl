@@ -4,6 +4,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
+
+# Windows 멀티프로세싱 호환을 위한 collate_fn 함수 정의
+def pil_collate_fn(batch):
+    return tuple(zip(*batch))
 from tqdm import tqdm
 from model import SimCLRVIT
 
@@ -29,15 +33,24 @@ if __name__ == "__main__":
 
     # --- 데이터셋 및 데이터로더 ---
     transform = transforms.Compose([
-        transforms.Resize((IMAGE_SIZE, IMAGE_SIZE)),
+        transforms.RandomResizedCrop(IMAGE_SIZE, scale=(0.2, 1.0)),
         transforms.RandomHorizontalFlip(),
+        transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),
+        transforms.RandomGrayscale(p=0.2),
+        transforms.GaussianBlur(kernel_size=23, sigma=(0.1, 2.0)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
     ])
 
     # 라벨 없이 이미지 전체를 사용 (ImageFolder는 폴더명을 라벨로 사용하지만, SimCLR는 라벨 미사용)
-    dataset = datasets.ImageFolder(DATA_DIR, transform=transform)
-    dataloader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=4)
+    dataset = datasets.ImageFolder(DATA_DIR, transform=None)
+    dataloader = DataLoader(
+        dataset,
+        batch_size=BATCH_SIZE,
+        shuffle=True,
+        num_workers=4,
+        collate_fn=pil_collate_fn  # lambda 대신 함수명 사용 (Windows 호환)
+    )
 
     # --- 데이터/정규화/샘플 체크 ---
     import matplotlib.pyplot as plt
@@ -54,8 +67,9 @@ if __name__ == "__main__":
 
     # 데이터 샘플 체크
     sample_img, _ = dataset[0]
-    print("[데이터 샘플] min:", sample_img.min().item(), "max:", sample_img.max().item(), "mean:", sample_img.mean().item(), "std:", sample_img.std().item())
-    show_img(sample_img, title="정규화 후 샘플 이미지")
+    sample_tensor = transform(sample_img)  # PIL 이미지를 tensor로 변환 및 정규화
+    # print("[데이터 샘플] min:", sample_tensor.min().item(), "max:", sample_tensor.max().item(), "mean:", sample_tensor.mean().item(), "std:", sample_tensor.std().item())
+    # show_img(sample_tensor, title="정규화 후 샘플 이미지")
 
     # --- SimCLR ViT 모델 불러오기 (model.py 기반) ---
     model = SimCLRVIT(out_dim=128)
@@ -67,7 +81,7 @@ if __name__ == "__main__":
     model = model.to(DEVICE)
 
     # --- SimCLR NT-Xent Loss (정상 구현) ---
-    def nt_xent_loss(z1, z2, temperature=0.5):
+    def nt_xent_loss(z1, z2, temperature=0.2):
         batch_size = z1.size(0)
         z1 = nn.functional.normalize(z1, dim=1)
         z2 = nn.functional.normalize(z2, dim=1)
@@ -99,9 +113,9 @@ if __name__ == "__main__":
     for epoch in range(EPOCHS):
         total_loss = 0
         for images, _ in tqdm(dataloader, desc=f"Epoch {epoch+1}/{EPOCHS}"):
-            # SimCLR: 같은 이미지를 두 번 augment해서 쌍 생성
-            images1 = images
-            images2 = images[torch.randperm(images.size(0))]
+            # SimCLR: 같은 이미지를 두 번 독립적으로 augment해서 쌍 생성 (PIL 이미지에 transform 적용)
+            images1 = torch.stack([transform(img) for img in images])
+            images2 = torch.stack([transform(img) for img in images])
             images1, images2 = images1.to(DEVICE), images2.to(DEVICE)
 
             # 데이터 텐서 통계 체크
