@@ -9,26 +9,8 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
 
   // API 서버 주소 설정 (다른 로컬에서 접속 가능)
   const getApiBaseUrl = () => {
-    // 환경변수가 있으면 사용, 없으면 자동 선택
-    if (import.meta.env.VITE_API_URL) {
-      return import.meta.env.VITE_API_URL;
-    }
-    
-    // 개발 환경에서는 프록시 사용 (CORS 우회)
-    if (import.meta.env.DEV) {
-      return '/ai-api'; // Vite 프록시 경로 사용
-    }
-    
-    // localhost로 접속 중인지 확인
-    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-    
-    if (isLocalhost) {
-      // localhost에서 실행 중이면 localhost 사용
-      return 'http://localhost:8001';
-    } else {
-      // 다른 IP에서 접속 중이면 실제 IP 사용
-      return 'http://192.168.0.46:8001';
-    }
+    // 항상 서버의 실제 IP 사용 (환경변수, 프록시 무시)
+    return 'http://192.168.0.46:8001';
   };
 
   // 파일 선택 처리
@@ -64,7 +46,7 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
       const formData = new FormData();
       formData.append('file', selectedFile);
 
-      const fullUrl = `${apiUrl}/upload_and_search/`;
+      const fullUrl = `${apiUrl}/api/upload_and_search/`;
       console.log('📡 전체 요청 URL:', fullUrl);
 
       const response = await fetch(fullUrl, {
@@ -73,14 +55,27 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
       });
 
       console.log('📬 응답 상태:', response.status, response.statusText);
-      
-      if (!response.ok) {
-        throw new Error(`서버 오류: ${response.status} ${response.statusText}`);
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (jsonErr) {
+        setMessage('서버 응답을 해석할 수 없습니다. 관리자에게 문의하세요.');
+        setLoading(false);
+        return;
+      }
+      console.log('📦 응답 데이터:', data);
+
+      // 강아지 이미지가 아닐 때(백엔드에서 판별 실패)
+      if (!data.success && data.error === 'not_a_dog') {
+        let debugInfo = '';
+        if (data.dog_check) {
+          debugInfo = `\n(디버그: 키포인트 ${data.dog_check.num_keypoints}개, 평균신뢰도 ${data.dog_check.avg_score?.toFixed(2)}, SimCLR최대유사도 ${data.dog_check.max_simclr_similarity?.toFixed(3)})`;
+        }
+        setMessage((data.message || '강아지 이미지가 아닙니다.') + debugInfo);
+        return;
       }
 
-      const data = await response.json();
-      console.log('📦 응답 데이터:', data);
-      
       if (data.success) {
         console.log('🎯 검색 결과 개수:', data.results?.length || 0);
         console.log('🖼️  검색 결과 이미지 정보:');
@@ -92,18 +87,25 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
           console.log(`     입양상태: ${dog.adoption_status} (코드: ${dog.adoption_status_code})`);
           console.log(`     유사도: ${dog.combined_similarity || dog.overall_similarity}`);
         });
-        
+
         console.log('📊 검색 메타데이터:', data.search_metadata);
-        
+
+
         // 검색 결과, 원본 이미지, 키포인트 이미지, 메타데이터를 부모 컴포넌트로 전달
-        const queryKeypointImageUrl = data.query_keypoint_image 
-          ? `${getApiBaseUrl()}/image/${data.query_keypoint_image}`
-          : null;
-        
+        // 반드시 /api/image/output_keypoints/ 경로로 접근해야 동적 생성/서빙이 보장됨
+        let queryKeypointImageUrl = null;
+        if (data.query_keypoint_image) {
+          let filename = data.query_keypoint_image;
+          if (filename.includes('/')) {
+            filename = filename.split('/').pop();
+          }
+          queryKeypointImageUrl = `${getApiBaseUrl()}/api/image/output_keypoints/${filename}`;
+        }
+
         onSearchResults(data.results, previewUrl, queryKeypointImageUrl, data.search_metadata);
         setMessage('검색 완료! 결과를 확인해보세요.');
       } else {
-        setMessage('검색에 실패했습니다. 다시 시도해주세요.');
+        setMessage(data.message || '검색에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
       console.error('검색 오류:', error);
@@ -144,10 +146,10 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
           }}
         >
           <h1 style={{ margin: 0, fontSize: '24px', fontWeight: 'bold' }}>
-            🐕 강아지 유사도 검색
+            보호견 유사도 검색
           </h1>
           <p style={{ margin: '10px 0 0 0', fontSize: '16px', opacity: 0.9 }}>
-            SimCLR + AP-10K 키포인트 기반 유사도 분석
+            AI 기반 유사도 분석
           </p>
         </div>
 
@@ -164,10 +166,10 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
           {/* 안내 메시지 */}
           <div style={{ textAlign: 'center', color: '#666' }}>
             <p style={{ margin: '0 0 10px 0', fontSize: '18px', color: '#333' }}>
-              🔍 찾고 싶은 강아지와 유사한 강아지들을 찾아드려요!
+              잃어버린 강아지와 유사한 강아지를 찾아드립니다!
             </p>
             <p style={{ margin: '0', fontSize: '14px' }}>
-              SimCLR + 키포인트 분석으로 정확한 유사도를 계산합니다
+              AI 분석으로 정확한 유사도를 계산합니다
             </p>
           </div>
 
@@ -218,12 +220,16 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
                 </p>
               </div>
             ) : (
-              <div>
-                <div style={{ fontSize: '80px', marginBottom: '20px' }}>📷</div>
-                <p style={{ margin: '10px 0', fontSize: '18px', color: '#333', fontWeight: 'bold' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <img
+                  src="/upload_icon.png"
+                  alt="업로드 아이콘"
+                  style={{ width: '80px', height: '80px', marginBottom: '20px', display: 'block' }}
+                />
+                <p style={{ margin: '10px 0', fontSize: '18px', color: '#333', fontWeight: 'bold', textAlign: 'center' }}>
                   강아지 사진을 선택해주세요
                 </p>
-                <p style={{ margin: '0', fontSize: '14px', color: '#999' }}>
+                <p style={{ margin: '0', fontSize: '14px', color: '#999', textAlign: 'center' }}>
                   JPG, PNG 파일만 지원됩니다
                 </p>
               </div>
@@ -287,7 +293,7 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
               }
             }}
           >
-            {loading ? '🔍 분석 중...' : '🚀 유사한 강아지 찾기'}
+            {loading ? '🔍 분석 중...' : '내 강아지 찾기'}
           </button>
 
           {/* 기능 설명 */}

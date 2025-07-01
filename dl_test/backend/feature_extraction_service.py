@@ -9,6 +9,9 @@ from PIL import Image
 import io
 import sys
 from typing import Optional, Tuple
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+import requests
 
 # 프로젝트 루트를 sys.path에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -92,3 +95,21 @@ def get_feature_service() -> FeatureExtractionService:
     if _feature_service is None:
         _feature_service = FeatureExtractionService()
     return _feature_service
+
+router = APIRouter()
+
+class ImageUrlRequest(BaseModel):
+    imageUrl: str
+
+@router.post("/api/extract_features_from_url")
+@router.post("/api/extract_features_from_url/")
+async def extract_features_from_url(req: ImageUrlRequest):
+    service = get_feature_service()
+    try:
+        response = requests.get(req.imageUrl, timeout=10)
+        response.raise_for_status()
+        image_bytes = response.content
+        vector = service.extract_features_from_bytes(image_bytes)
+        return {"vector": vector.tolist()}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"이미지 벡터 추출 실패: {e}")

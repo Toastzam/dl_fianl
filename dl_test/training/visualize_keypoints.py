@@ -1,9 +1,22 @@
+import re
+def normalize_filename(filename):
+    # 파일명에서 연속된 특수문자, 공백, 괄호 등은 모두 단일 언더스코어로 치환
+    name, ext = os.path.splitext(filename)
+    # 1. 괄호, 공백, 특수문자 모두 _로 치환
+    name = re.sub(r'[^A-Za-z0-9._-]+', '_', name)
+    # 2. 앞뒤 _ 제거
+    name = name.strip('_')
+    # 3. 연속된 _는 하나로 축소
+    name = re.sub(r'_+', '_', name)
+    return name + ext
 import torch
 import numpy as np
 import os
 from PIL import Image
 import cv2 # OpenCV는 이미지 처리 및 시각화에 유용합니다.
 import mmcv
+import io
+import requests
 
 # --- MMPose 1.3.2+ 버전에 맞는 임포트 ---
 from mmpose.apis import init_model 
@@ -75,72 +88,144 @@ def detect_and_visualize_keypoints(
     ap10k_model, 
     device, 
     visualizer, 
-    output_dir: str = 'output_keypoints'
+    output_dir: str = None,
+    output_path: str = None
 ):
     """
     단일 이미지에서 키포인트를 검출하고 시각화하여 저장합니다.
+    image_path가 http/https로 시작하면 URL에서 이미지를 불러옵니다.
     """
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    # 모든 output_keypoints 저장/서빙 경로를 C:/dl_final/dl_fianl/output_keypoints로 강제 통일
+    fixed_output_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'output_keypoints'))
+    print(f"[DEBUG] __file__ 위치: {os.path.abspath(__file__)}")
+    print(f"[DEBUG] fixed_output_dir (dl_fianl/output_keypoints): {fixed_output_dir}")
+    if not os.path.exists(fixed_output_dir):
+        os.makedirs(fixed_output_dir)
+    output_dir = fixed_output_dir
+    # FastAPI StaticFiles 마운트 경로도 반드시 동일하게 맞춰야 함
+    print(f"[INFO] 모든 output_keypoints 저장/서빙 경로를 C:/dl_final/dl_fianl/output_keypoints로 강제 통일합니다.")
 
-    # 원본 이미지를 RGB로 읽기 (웹 표시용)
-    img_rgb = mmcv.imread(image_path, channel_order='rgb')
-    if img_rgb is None:
-        print(f"오류: 이미지를 로드할 수 없습니다: {image_path}. 파일이 존재하는지 확인하세요.")
-        return None, None
+    # --- 이미지 로딩 (로컬/URL 모두 지원) 및 256x256 리사이즈 ---
+    img_rgb = None
+    img_source = None
+    def pad_to_square(img, fill_color=(255,255,255)):
+        w, h = img.size
+        if w == h:
+            return img
+        size = max(w, h)
+        new_img = Image.new('RGB', (size, size), fill_color)
+        new_img.paste(img, ((size - w) // 2, (size - h) // 2))
+        return new_img
 
-    img_height, img_width, _ = img_rgb.shape
+    if image_path.startswith('http://') or image_path.startswith('https://'):
+        try:
+            response = requests.get(image_path, timeout=10)
+            response.raise_for_status()
+            img_source = Image.open(io.BytesIO(response.content)).convert('RGB')
+        except Exception as e:
+            print(f"오류: URL에서 이미지를 불러올 수 없습니다: {image_path}\n{e}")
+            return None, None
+    else:
+        if not os.path.exists(image_path):
+            print(f"오류: 이미지를 로드할 수 없습니다: {image_path}. 파일이 존재하는지 확인하세요.")
+            return None, None
+        img_source = Image.open(image_path).convert('RGB')
+
+    # 정사각형 패딩 후 256x256 리사이즈 및 디버그 이미지 저장
+    img_source = pad_to_square(img_source)
+    # 디버그: 패딩된 이미지 저장
+    debug_pad_path = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}_padded.jpg")
+    img_source.save(debug_pad_path)
+    print(f"[DEBUG] 패딩 이미지 저장: {debug_pad_path}")
+
+    img_resized = img_source.resize((256, 256), Image.BILINEAR)
+    # 디버그: 리사이즈된 이미지 저장
+    debug_resize_path = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(image_path))[0]}_resized256.jpg")
+    Image.fromarray(np.array(img_resized)).save(debug_resize_path)
+    print(f"[DEBUG] 256x256 리사이즈 이미지 저장: {debug_resize_path}")
+
+    img_rgb = np.array(img_resized)
+    print(f"[DEBUG] img_rgb shape: {img_rgb.shape}, dtype: {img_rgb.dtype}, min: {img_rgb.min()}, max: {img_rgb.max()}")
+
+    # --- 디버깅: 전처리된 이미지 shape, dtype, min/max 값 출력 및 저장 ---
+    print(f"[DEBUG] Preprocessed image shape: {img_rgb.shape}, dtype: {img_rgb.dtype}, min: {img_rgb.min()}, max: {img_rgb.max()}")
+    # 중간 이미지 저장 (디버깅용)
+    debug_padded_path = os.path.join(output_dir, 'debug_padded_' + os.path.basename(image_path))
+    debug_resized_path = os.path.join(output_dir, 'debug_resized_' + os.path.basename(image_path))
+    try:
+        img_source.save(debug_padded_path)
+        Image.fromarray(img_rgb).save(debug_resized_path)
+        print(f"[DEBUG] Saved padded image: {debug_padded_path}")
+        print(f"[DEBUG] Saved resized image: {debug_resized_path}")
+    except Exception as e:
+        print(f"[DEBUG] Failed to save debug images: {e}")
+    img_height, img_width = img_rgb.shape[:2]
+    # 원본 크기 정보도 pose_results에 포함 (아래에서 img_width, img_height로 저장)
 
     # MMPose의 고수준 추론 API 사용
     from mmpose.apis import inference_topdown
-    
-    # 전체 이미지에 대해 bounding box 생성 (동물 전체를 포함)
     bbox = np.array([[0, 0, img_width, img_height]], dtype=np.float32)
-    
-    # inference_topdown을 사용하여 키포인트 검출
-    pose_results = inference_topdown(ap10k_model, image_path, bbox)
-    
+
+    # inference_topdown은 numpy array도 입력 가능
+
+    pose_results = inference_topdown(ap10k_model, img_rgb, bbox)
+
+    # --- 디버깅: pose_results가 비었을 때 shape, dtype, 파일 존재 여부 출력 ---
     if not pose_results:
+        print(f"[DEBUG] pose_results is empty for {image_path}")
+        print(f"[DEBUG] Preprocessed image shape: {img_rgb.shape}, dtype: {img_rgb.dtype}, min: {img_rgb.min()}, max: {img_rgb.max()}")
+        print(f"[DEBUG] Does padded image exist? {os.path.exists(debug_padded_path)}")
+        print(f"[DEBUG] Does resized image exist? {os.path.exists(debug_resized_path)}")
         print(f"경고: {image_path}에서 키포인트를 검출할 수 없었습니다. (동물이 없거나 너무 작을 수 있음)")
         return None, None
 
-    # 키포인트 시각화 (RGB 이미지 사용)
     vis_img_rgb = draw_advanced_keypoints_rgb(img_rgb.copy(), pose_results)
-    
-    base_name = os.path.basename(image_path)
-    name_parts = os.path.splitext(base_name)
-    output_filename = f"{name_parts[0]}_keypoints{name_parts[1]}"
-    output_path = os.path.join(output_dir, output_filename)
-    
-    # PIL을 사용해서 RGB 이미지를 올바르게 저장
-    from PIL import Image
+
+    # 파일명 생성 (URL이면 파일명만 추출, 확장자는 항상 .jpg로 강제)
+    if output_path is not None:
+        # 외부에서 경로를 지정한 경우 해당 경로에 저장 (정규화 적용)
+        output_path = os.path.abspath(output_path)
+        output_path = os.path.join(os.path.dirname(output_path), normalize_filename(os.path.basename(output_path)))
+    else:
+        base_name = os.path.basename(image_path)
+        if not base_name:
+            base_name = 'remote_image'
+        base_name = normalize_filename(base_name)
+        name_parts = os.path.splitext(base_name)
+        output_filename = f"{name_parts[0]}_keypoints.jpg"  # 항상 jpg로 저장
+        output_path = os.path.join(output_dir, output_filename)
+
     pil_img = Image.fromarray(vis_img_rgb)
-    pil_img.save(output_path)
+    pil_img.save(output_path, format='JPEG')
     print(f"키포인트 시각화 저장: {output_path}")
 
-    # 결과를 이전 형식으로 변환
+    # 결과를 이전 형식으로 변환 (width, height 정보 포함)
     reconstructed_pose_results = []
     for pose_result in pose_results:
         if hasattr(pose_result, 'pred_instances'):
             keypoints_xy = pose_result.pred_instances.keypoints
             keypoint_scores = pose_result.pred_instances.keypoint_scores
-            
             # 텐서인 경우 numpy로 변환
             if hasattr(keypoints_xy, 'cpu'):
                 keypoints_xy = keypoints_xy.cpu().numpy()
             if hasattr(keypoint_scores, 'cpu'):
                 keypoint_scores = keypoint_scores.cpu().numpy()
-            
-            for i in range(keypoints_xy.shape[0]): 
-                kpt_xy = keypoints_xy[i] 
-                kpt_score = keypoint_scores[i] 
+            for i in range(keypoints_xy.shape[0]):
+                kpt_xy = keypoints_xy[i]
+                kpt_score = keypoint_scores[i]
                 combined_kpts = np.hstack((kpt_xy, kpt_score[:, np.newaxis]))
-                reconstructed_pose_results.append({'keypoints': combined_kpts})
+                reconstructed_pose_results.append({'keypoints': combined_kpts, 'img_width': img_width, 'img_height': img_height})
         else:
-            # 이전 형식 그대로 사용
-            reconstructed_pose_results.append(pose_result)
+            # 이전 형식 그대로 사용, width/height 추가
+            pose_dict = dict(pose_result)
+            pose_dict['img_width'] = img_width
+            pose_dict['img_height'] = img_height
+            reconstructed_pose_results.append(pose_dict)
 
-    return output_path, reconstructed_pose_results 
+    # pose_results가 비어있으면 None 반환 (언팩 에러 방지)
+    if not reconstructed_pose_results:
+        return None, None
+    return output_path, reconstructed_pose_results
 
 def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCLR_IMAGE_SIZE):
     """
@@ -148,21 +233,50 @@ def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCL
     (간단한 예시: 키포인트 위치의 L2 거리 기반)
     """
     if not pose_results1 or not pose_results2:
-        return 0.0 
+        print("[DEBUG] calculate_keypoint_similarity: pose_results1 or pose_results2 is empty")
+        return 0.0
 
-    kpts1 = pose_results1[0]['keypoints'] 
+    kpts1 = pose_results1[0]['keypoints']
     kpts2 = pose_results2[0]['keypoints']
 
-    min_kpts = min(len(kpts1), len(kpts2)) 
-    kpts1_xy = kpts1[:min_kpts, :2] 
-    kpts2_xy = kpts2[:min_kpts, :2] 
-    
-    kpts1_xy_t = torch.from_numpy(kpts1_xy).float()
-    kpts2_xy_t = torch.from_numpy(kpts2_xy).float()
+    min_kpts = min(len(kpts1), len(kpts2))
+    kpts1_xy = kpts1[:min_kpts, :2]
+    kpts2_xy = kpts2[:min_kpts, :2]
 
-    distance = torch.mean(torch.norm(kpts1_xy_t - kpts2_xy_t, dim=1)) / image_size
+    # 각 이미지의 width, height로 정규화
+    w1 = pose_results1[0].get('img_width', image_size)
+    h1 = pose_results1[0].get('img_height', image_size)
+    w2 = pose_results2[0].get('img_width', image_size)
+    h2 = pose_results2[0].get('img_height', image_size)
 
-    similarity = float(max(0.0, 1.0 - distance.item())) 
+    # (x, y) 각각 정규화
+    kpts1_xy_norm = np.zeros_like(kpts1_xy)
+    kpts2_xy_norm = np.zeros_like(kpts2_xy)
+    kpts1_xy_norm[:, 0] = kpts1_xy[:, 0] / w1
+    kpts1_xy_norm[:, 1] = kpts1_xy[:, 1] / h1
+    kpts2_xy_norm[:, 0] = kpts2_xy[:, 0] / w2
+    kpts2_xy_norm[:, 1] = kpts2_xy[:, 1] / h2
+
+    # print(f"[DEBUG] kpts1_xy_norm: {kpts1_xy_norm}")
+    # print(f"[DEBUG] kpts2_xy_norm: {kpts2_xy_norm}")  # [자동 주석처리] kpts2_xy_norm 디버그 출력
+
+    # NaN/Inf 체크
+    if np.any(np.isnan(kpts1_xy_norm)) or np.any(np.isnan(kpts2_xy_norm)):
+        print("[DEBUG] NaN detected in normalized keypoints!")
+        return 0.0
+    if np.any(np.isinf(kpts1_xy_norm)) or np.any(np.isinf(kpts2_xy_norm)):
+        print("[DEBUG] Inf detected in normalized keypoints!")
+        return 0.0
+
+    kpts1_xy_t = torch.from_numpy(kpts1_xy_norm).float()
+    kpts2_xy_t = torch.from_numpy(kpts2_xy_norm).float()
+
+    distance = torch.mean(torch.norm(kpts1_xy_t - kpts2_xy_t, dim=1))
+    print(f"[DEBUG] keypoint L2 distance: {distance.item()}")
+
+    # distance가 0에 가까울수록 유사도 1, distance가 커질수록 유사도 0에 가까워짐
+    similarity = float(1.0 / (1.0 + distance.item()))
+    print(f"[DEBUG] keypoint similarity (1/(1+d)): {similarity}")
     return similarity
 
 def draw_advanced_keypoints_rgb(img_rgb, pose_results):
@@ -260,7 +374,7 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
                     else:
                         line_color = colors_bgr['back_legs']
                     
-                    cv2.line(overlay, pt1, pt2, line_color, 3)
+                    cv2.line(overlay, pt1, pt2, line_color, 1, lineType=cv2.LINE_AA)
             
             # 키포인트 점 그리기 (오버레이에)
             for i, (kpt, score) in enumerate(zip(kpts, kpt_scores)):
@@ -277,9 +391,9 @@ def draw_advanced_keypoints_rgb(img_rgb, pose_results):
                     else:  # 뒷다리, 꼬리
                         kpt_color = (0, 165, 255)    # 주황색
                     
-                    # 키포인트 원 그리기
-                    cv2.circle(overlay, pt, 6, kpt_color, -1)
-                    cv2.circle(overlay, pt, 6, (255, 255, 255), 2)  # 흰색 테두리
+                    # 키포인트 원 그리기 (크기 축소)
+                    cv2.circle(overlay, pt, 3, kpt_color, -1)
+                    cv2.circle(overlay, pt, 3, (255, 255, 255), 1)  # 흰색 테두리
     
     # 투명도 적용하여 합성
     result = cv2.addWeighted(img_bgr, 1-alpha, overlay, alpha, 0)
@@ -322,22 +436,51 @@ if __name__ == "__main__":
         
         print("\n--- SimCLR 기반 가장 유사한 강아지 검색 결과 (상위 5개) ---")
         # 쿼리 이미지 키포인트 검출 및 시각화
+
         print(f"\n쿼리 이미지 키포인트 검출 및 시각화: {query_image_path}")
-        # detect_and_visualize_keypoints 호출 시 dataset_info 인자 제거
         query_kp_output_path, query_pose_results = detect_and_visualize_keypoints(
             query_image_path, ap10k_model, ap10k_device, visualizer
         )
+        print("[DEBUG] 쿼리 pose_results type:", type(query_pose_results))
+        print("[DEBUG] 쿼리 pose_results len:", len(query_pose_results) if query_pose_results else 0)
+        if query_pose_results:
+            print("[DEBUG] 쿼리 pose_results[0] type:", type(query_pose_results[0]))
+            print("[DEBUG] 쿼리 pose_results[0] keys:", list(query_pose_results[0].keys()) if isinstance(query_pose_results[0], dict) else "(not dict)")
+            if isinstance(query_pose_results[0], dict) and 'keypoints' in query_pose_results[0]:
+                print("[DEBUG] 쿼리 keypoints shape:", query_pose_results[0]['keypoints'].shape)
+                print("[DEBUG] 쿼리 keypoints sample:\n", query_pose_results[0]['keypoints'])
+            else:
+                print("[DEBUG] 쿼리 pose_results[0]에 'keypoints' 없음 또는 타입 불일치")
+        else:
+            print("[DEBUG] 쿼리 pose_results가 None 또는 빈 리스트임")
 
         final_results = []
 
-        for i, (simclr_score, db_img_path) in enumerate(top_similar_dogs_simclr):
+        # SimCLR 검색 결과가 dict 또는 튜플일 수 있으므로 자동 판별
+        for i, result in enumerate(top_similar_dogs_simclr):
+            if isinstance(result, dict):
+                simclr_score = result.get('similarity', 0.0)
+                db_img_path = result.get('image_url') or result.get('image_path')
+            else:
+                simclr_score, db_img_path = result
+
             print(f"\n--- 유사 강아지 {i+1}: {db_img_path} (SimCLR 유사도: {simclr_score:.4f}) ---")
-            
-            # DB 이미지 키포인트 검출 및 시각화
-            # detect_and_visualize_keypoints 호출 시 dataset_info 인자 제거
             db_kp_output_path, db_pose_results = detect_and_visualize_keypoints(
                 db_img_path, ap10k_model, ap10k_device, visualizer
             )
+
+            print(f"[DEBUG] DB pose_results for {db_img_path} type:", type(db_pose_results))
+            print(f"[DEBUG] DB pose_results for {db_img_path} len:", len(db_pose_results) if db_pose_results else 0)
+            if db_pose_results:
+                print(f"[DEBUG] DB pose_results[0] type:", type(db_pose_results[0]))
+                print(f"[DEBUG] DB pose_results[0] keys:", list(db_pose_results[0].keys()) if isinstance(db_pose_results[0], dict) else "(not dict)")
+                if isinstance(db_pose_results[0], dict) and 'keypoints' in db_pose_results[0]:
+                    print(f"[DEBUG] DB keypoints shape:", db_pose_results[0]['keypoints'].shape)
+                    print(f"[DEBUG] DB keypoints sample:\n", db_pose_results[0]['keypoints'])
+                else:
+                    print(f"[DEBUG] DB pose_results[0]에 'keypoints' 없음 또는 타입 불일치")
+            else:
+                print(f"[DEBUG] DB pose_results가 None 또는 빈 리스트임")
 
             keypoint_similarity = 0.0
             if query_pose_results and db_pose_results:

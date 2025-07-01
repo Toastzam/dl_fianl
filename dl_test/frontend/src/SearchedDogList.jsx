@@ -450,19 +450,29 @@ const SearchedDogList = ({ searchResults, onSelectDog, onBackToSearch, originalI
 
                       {/* 키포인트 이미지 */}
                       <div style={{ position: 'relative', overflow: 'hidden' }}>
-                        <img
-                          src={`${getApiBaseUrl()}/image/${dog.keypoint_image_path}`}
-                          alt="키포인트"
-                          style={{
-                            width: '100%',
-                            height: '100%',
-                            objectFit: 'cover'
-                          }}
-                          onError={(e) => {
-                            console.log('키포인트 이미지 로드 실패:', e.target.src);
-                            e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 150 150"><rect width="150" height="150" fill="%23333"/><circle cx="75" cy="40" r="3" fill="red" fill-opacity="0.8"/><circle cx="60" cy="55" r="3" fill="red" fill-opacity="0.8"/><circle cx="90" cy="55" r="3" fill="red" fill-opacity="0.8"/><circle cx="75" cy="90" r="3" fill="red" fill-opacity="0.8"/><circle cx="55" cy="110" r="3" fill="red" fill-opacity="0.8"/><circle cx="95" cy="110" r="3" fill="red" fill-opacity="0.8"/><line x1="75" y1="40" x2="60" y2="55" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="40" x2="90" y2="55" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="40" x2="75" y2="90" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="90" x2="55" y2="110" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="90" x2="95" y2="110" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><text x="75" y="135" text-anchor="middle" fill="white" font-family="Arial" font-size="10">키포인트</text></svg>';
-                          }}
-                        />
+                        {/* 키포인트 이미지 경로 앞 슬래시 제거 함수 */}
+                        {(() => {
+                          const getKeypointImageUrl = (keypointPath) => {
+                            if (!keypointPath) return '';
+                            const cleanPath = keypointPath.startsWith('/') ? keypointPath.slice(1) : keypointPath;
+                            return `${getApiBaseUrl()}/image/${cleanPath}`;
+                          };
+                          return (
+                            <img
+                              src={getKeypointImageUrl(dog.keypoint_image_path)}
+                              alt="키포인트"
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit: 'cover'
+                              }}
+                              onError={(e) => {
+                                console.log('키포인트 이미지 로드 실패:', e.target.src);
+                                e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="150" height="150" viewBox="0 0 150 150"><rect width="150" height="150" fill="%23333"/><circle cx="75" cy="40" r="3" fill="red" fill-opacity="0.8"/><circle cx="60" cy="55" r="3" fill="red" fill-opacity="0.8"/><circle cx="90" cy="55" r="3" fill="red" fill-opacity="0.8"/><circle cx="75" cy="90" r="3" fill="red" fill-opacity="0.8"/><circle cx="55" cy="110" r="3" fill="red" fill-opacity="0.8"/><circle cx="95" cy="110" r="3" fill="red" fill-opacity="0.8"/><line x1="75" y1="40" x2="60" y2="55" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="40" x2="90" y2="55" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="40" x2="75" y2="90" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="90" x2="55" y2="110" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><line x1="75" y1="90" x2="95" y2="110" stroke="yellow" stroke-width="2" stroke-opacity="0.8"/><text x="75" y="135" text-anchor="middle" fill="white" font-family="Arial" font-size="10">키포인트</text></svg>';
+                              }}
+                            />
+                          );
+                        })()}
                         {/* 키포인트 라벨 */}
                         <div style={{
                           position: 'absolute',
@@ -542,19 +552,19 @@ const SearchedDogList = ({ searchResults, onSelectDog, onBackToSearch, originalI
 
                     <div style={{ fontSize: '14px', color: '#666' }}>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>품종:</strong> {dog.breed || '정보 없음'}
+                        <strong>품종:</strong> {dog.db_info?.breed_name || dog.db_info?.breed || '정보 없음'}
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>성별:</strong> {getGenderText(dog.gender_code || dog.gender)}
+                        <strong>성별:</strong> {getGenderText(dog.db_info?.gender)}
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>무게:</strong> {dog.weight ? `${dog.weight}kg` : '정보 없음'}
+                        <strong>무게:</strong> {dog.db_info?.weight ? `${dog.db_info.weight}kg` : '정보 없음'}
                       </div>
                       <div style={{ marginBottom: '8px' }}>
-                        <strong>발견 위치:</strong> {dog.location || dog.found_location || '정보 없음'}
+                        <strong>발견 위치:</strong> {dog.db_info?.location || dog.db_info?.found_location || '정보 없음'}
                       </div>
                       <div>
-                        <strong>입양 상태:</strong> {getAdoptionStatusText(dog.adoption_status_code || dog.adoption_status)}
+                        <strong>입양 상태:</strong> {getAdoptionStatusText(dog.db_info?.adoption_status)}
                       </div>
                     </div>
 
@@ -569,7 +579,7 @@ const SearchedDogList = ({ searchResults, onSelectDog, onBackToSearch, originalI
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>✨ SimCLR 유사도:</span>
                         <span style={{ fontWeight: 'bold', color: grade.color }}>
-                          {((dog.similarity || 0) * 100).toFixed(1)}%
+                          {((dog.simclr_similarity || 0) * 100).toFixed(1)}%
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>

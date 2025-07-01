@@ -10,6 +10,7 @@ from typing import List, Dict, Optional
 import json
 from datetime import datetime, date
 from decimal import Decimal
+import numpy as np
 
 # MySQL DB 연결 정보
 DB_CONFIG = {
@@ -75,7 +76,8 @@ class DogDatabase:
                 tables = [table[0] for table in cursor.fetchall()]
                 
                 if tables:
-                    print(f"✅ 기존 테이블 발견: {tables}")
+                    # print(f"✅ 기존 테이블 발견: {tables}")
+                    pass
                 else:
                     print("⚠️  데이터베이스에 테이블이 없습니다.")
                 
@@ -131,7 +133,7 @@ class DogDatabase:
             return []
     
     def get_dog_by_id(self, dog_id: int) -> Optional[Dict]:
-        """ID로 특정 강아지 정보 조회 (실제 pet_profile 테이블 사용)"""
+        """ID로 특정 강아지 정보 조회 (실제 pet_profile 테이블 사용) + breed_name 변환 및 누락 필드 보장"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -163,12 +165,15 @@ class DogDatabase:
                     LEFT JOIN animal_shelter ash ON pp.shelter_id = ash.shelter_id
                     WHERE pp.pet_uid = %s
                 """, (dog_id,))
-                
                 dog = cursor.fetchone()
                 if dog:
-                    print(f"✅ pet_profile에서 강아지 ID {dog_id} 정보 조회 성공")
-                    # datetime 객체를 문자열로 변환
-                    return convert_datetime_to_string(dog)
+                    # breed_name 추가, 누락 필드 보장
+                    dog = convert_datetime_to_string(dog)
+                    dog['breed_name'] = self.get_breed_name_by_code(dog.get('breed')) if dog.get('breed') else None
+                    for key in ['id','name','breed','breed_name','gender','neutered','weight','color','adoption_status','feature','location','age','reception_date','notice_start_date','notice_end_date','created_at','updated_at','shelter_name','shelter_phone','shelter_address','image_url']:
+                        if key not in dog:
+                            dog[key] = None
+                    return dog
                 else:
                     print(f"⚠️  강아지 ID {dog_id}를 찾을 수 없습니다")
                 return None
@@ -315,7 +320,7 @@ class DogDatabase:
                 cursor = conn.cursor()
                 cursor.execute("SHOW TABLES")
                 tables = [table[0] for table in cursor.fetchall()]
-                print(f"📋 데이터베이스 테이블 목록: {tables}")
+                # print(f"📋 데이터베이스 테이블 목록: {tables}")
                 return tables
         except Error as e:
             print(f"❌ 테이블 목록 조회 실패: {e}")
@@ -328,16 +333,19 @@ class DogDatabase:
                 cursor = conn.cursor(dictionary=True)
                 cursor.execute(f"DESCRIBE {table_name}")
                 columns = cursor.fetchall()
-                print(f"📋 테이블 '{table_name}' 구조:")
+                # print(f"📋 테이블 '{table_name}' 구조:")
                 for col in columns:
-                    print(f"  - {col['Field']}: {col['Type']} {'(Primary Key)' if col['Key'] == 'PRI' else ''}")
+                    # print(f"  - {col['Field']}: {col['Type']} {'(Primary Key)' if col['Key'] == 'PRI' else ''}")
+                    pass
                 return columns
         except Error as e:
             print(f"❌ 테이블 '{table_name}' 구조 조회 실패: {e}")
             return []
     
     def get_all_pet_images_with_vectors(self) -> List[Dict]:
-        """벡터가 있는 모든 펫 이미지 조회 (유사도 검색용)"""
+        """
+        벡터가 있는 모든 펫 이미지 + 프로필 + 보호소 정보까지 한 번에 조인해서 반환 (속도 개선)
+        """
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -349,41 +357,59 @@ class DogDatabase:
                         pi.public_url,
                         pi.image_vector,
                         pp.name,
-                        pp.breed_cd,
-                        pp.adoption_status_cd
+                        pp.breed_cd as breed,
+                        pp.weight_kg as weight,
+                        pp.color,
+                        pp.feature as description,
+                        pp.found_location as location,
+                        pp.adoption_status_cd as adoption_status,
+                        pp.gender_cd as gender,
+                        pp.birth_yyyy_mm as age,
+                        pp.neutered_cd as neutered,
+                        pp.reception_date,
+                        pp.notice_start_date,
+                        pp.notice_end_date,
+                        pp.created_at,
+                        pp.updated_at,
+                        ash.shelter_name,
+                        ash.shelter_phone,
+                        ash.shelter_road_addr as shelter_address
                     FROM pet_image pi
                     JOIN pet_profile pp ON pi.pet_uid = pp.pet_uid
+                    LEFT JOIN animal_shelter ash ON pp.shelter_id = ash.shelter_id
                     WHERE pi.image_vector IS NOT NULL 
                     AND pi.image_vector != ''
                 """)
-                
                 images = cursor.fetchall()
-                print(f"✅ 벡터가 있는 {len(images)}개 이미지 조회")
+                print(f"✅ 벡터+프로필+보호소 포함 {len(images)}개 이미지 조회 (1회 쿼리)!")
                 return images
         except Error as e:
-            print(f"❌ 펫 이미지 벡터 조회 실패: {e}")
+            print(f"❌ 펫 이미지 벡터+프로필 조회 실패: {e}")
             return []
-    
-    def save_search_result(self, search_id: int, pet_uid: int, pet_image_id: int, similarity: float):
-        """검색 결과 저장 (pet_image_match_result 테이블)"""
+
+    def get_breed_name_by_code(self, breed_code: str) -> str:
+        """견종 코드로 견종 이름 조회 (클래스 메서드 버전)"""
+        if not breed_code:
+            return '정보 없음'
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO pet_image_match_result (
-                        search_id, pet_image_id, pet_uid, user_id, similarity, created_at
-                    ) VALUES (%s, %s, %s, %s, %s, NOW())
-                """, (search_id, pet_image_id, pet_uid, 1, similarity))  # user_id는 임시로 1
-                
-                conn.commit()
-                print(f"✅ 검색 결과 저장: pet_uid={pet_uid}, similarity={similarity:.4f}")
-                return cursor.lastrowid
+                    SELECT cd_nm
+                    FROM cmn_code
+                    WHERE group_cd = 'DOG_BREED' AND cd = %s AND use_yn = 'Y'
+                """, (breed_code,))
+                result = cursor.fetchone()
+                if result:
+                    return result[0]
+                else:
+                    return breed_code  # 코드를 찾을 수 없으면 원본 코드 반환
         except Error as e:
-            print(f"❌ 검색 결과 저장 실패: {e}")
-            return None
-    
+            print(f"❌ 견종 코드 '{breed_code}' 조회 실패: {e}")
+            return breed_code
+
     def get_breed_codes(self) -> Dict[str, str]:
-        """cmn_code 테이블에서 DOG_BREED 코드와 이름 매핑 조회"""
+        """cmn_code 테이블에서 DOG_BREED 코드와 이름 매핑 조회 (클래스 메서드 버전)"""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(dictionary=True)
@@ -393,38 +419,94 @@ class DogDatabase:
                     WHERE group_cd = 'DOG_BREED' AND use_yn = 'Y'
                     ORDER BY cd_nm
                 """)
-                
                 breed_codes = cursor.fetchall()
-                # 딕셔너리로 변환 (cd -> cd_nm)
                 breed_dict = {row['cd']: row['cd_nm'] for row in breed_codes}
-                print(f"✅ DOG_BREED 코드 {len(breed_dict)}개 조회")
+                print(f"✅ DOG_BREED 코드 {len(breed_dict)}개 조회 (클래스)")
                 return breed_dict
         except Error as e:
             print(f"❌ DOG_BREED 코드 조회 실패: {e}")
             return {}
 
-    def get_breed_name_by_code(self, breed_code: str) -> str:
-        """견종 코드로 견종 이름 조회"""
-        if not breed_code:
-            return '정보 없음'
-        
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT cd_nm
-                    FROM cmn_code
-                    WHERE group_cd = 'DOG_BREED' AND cd = %s AND use_yn = 'Y'
-                """, (breed_code,))
-                
-                result = cursor.fetchone()
-                if result:
-                    return result[0]
-                else:
-                    return breed_code  # 코드를 찾을 수 없으면 원본 코드 반환
-        except Error as e:
-            print(f"❌ 견종 코드 '{breed_code}' 조회 실패: {e}")
-            return breed_code
+    def get_all_pet_images(self) -> List[Dict]:
+        """
+        SimCLR 유사도 검색용: public_url, image_vector, 그리고 모든 강아지 정보(프론트엔드 요구 필드 포함) 반환 (robust, 빠름)
+        - public_url, image_vector, 실제 파일 존재, 벡터 파싱, 견종명 변환 캐시 등 robust하게 처리
+        """
+        images = self.get_all_pet_images_with_vectors()
+        print(f"[DEBUG] 1. get_all_pet_images_with_vectors() 반환: {len(images)}개")
+        # 견종명 캐시 (한 번만 쿼리)
+        breed_dict = self.get_breed_codes()  # {code: name}
+        print(f"[DEBUG] 2. get_breed_codes() 반환: {len(breed_dict)}개")
+        result = []
+        for idx, img in enumerate(images):
+            # print(f"[DEBUG] 3.{idx+1} 원본 img: {json.dumps({k: (str(v)[:80] if k=='image_vector' else v) for k,v in img.items()}, ensure_ascii=False, default=str)}") if idx < 3 else None
+            public_url = img.get('public_url')
+            if not public_url or not isinstance(public_url, str) or public_url.strip() == '':
+                print(f"[SKIP] public_url 누락: {img}")
+                continue
+            # 외부 URL(http/https)도 허용
+            file_found = False
+            if public_url.startswith('http://') or public_url.startswith('https://'):
+                file_found = True
+            else:
+                for folder in ['uploads', 'static', 'output_keypoints']:
+                    file_path = os.path.join(folder, os.path.basename(public_url))
+                    if os.path.exists(file_path):
+                        file_found = True
+                        break
+            if not file_found:
+                print(f"[SKIP] 파일 미존재: {public_url}")
+                continue
+            vec = img.get('image_vector')
+            # image_vector가 JSON 문자열, bytes, 리스트 등 다양한 형태일 수 있음
+            try:
+                if isinstance(vec, str):
+                    vec = np.array(json.loads(vec), dtype=np.float32)
+                elif isinstance(vec, (bytes, bytearray)):
+                    vec = np.frombuffer(vec, dtype=np.float32)
+                elif isinstance(vec, list):
+                    vec = np.array(vec, dtype=np.float32)
+                # print(f"[DEBUG] 4.{idx+1} image_vector 파싱 성공: shape={vec.shape if hasattr(vec, 'shape') else type(vec)}")  # 과도한 디버그 출력 주석 처리
+            except Exception as e:
+                print(f"[SKIP] image_vector 파싱 실패: {public_url}, error: {e}")
+                continue
+            if vec is None or not hasattr(vec, 'shape') or vec.shape[0] < 10:
+                print(f"[SKIP] image_vector None/짧음: {public_url}")
+                continue
+            breed_code = img.get('breed')
+            breed_name = breed_dict.get(breed_code) if breed_code else None
+            merged = {
+                'public_url': public_url,
+                'image_url': public_url,  # 항상 image_url도 포함
+                'image_vector': vec,
+                'pet_uid': img.get('pet_uid'),
+                'file_name': img.get('file_name'),
+                'id': img.get('pet_uid'),
+                'name': img.get('name'),
+                'breed': breed_code,
+                'breed_name': breed_name,
+                'gender': img.get('gender'),
+                'neutered': img.get('neutered'),
+                'weight': img.get('weight'),
+                'color': img.get('color'),
+                'adoption_status': img.get('adoption_status'),
+                'feature': img.get('description'),
+                'location': img.get('location'),
+                'age': img.get('age'),
+                'reception_date': img.get('reception_date'),
+                'notice_start_date': img.get('notice_start_date'),
+                'notice_end_date': img.get('notice_end_date'),
+                'created_at': img.get('created_at'),
+                'updated_at': img.get('updated_at'),
+                'shelter_name': img.get('shelter_name'),
+                'shelter_phone': img.get('shelter_phone'),
+                'shelter_address': img.get('shelter_address'),
+            }
+            # print(f"[DEBUG] 5.{idx+1} merged dict: {json.dumps({k: (str(v)[:80] if k=='image_vector' else v) for k,v in merged.items()}, ensure_ascii=False, default=str)}") if idx < 3 else None
+            result.append(merged)
+        print(f"[INFO] 최종 사용 가능한 이미지 {len(result)}개")
+        # print(f"[DEBUG] 최종 results: {results}")
+        return convert_datetime_to_string(result)
 
 # 전역 DB 인스턴스
 db = DogDatabase()
@@ -462,3 +544,9 @@ def get_breed_codes():
 
 def get_breed_name_by_code(breed_code: str):
     return db.get_breed_name_by_code(breed_code)
+
+def get_all_pet_images():
+    return db.get_all_pet_images()
+
+def get_dog_by_id(dog_id: int):
+    return db.get_dog_by_id(dog_id)
