@@ -124,7 +124,9 @@ def extract_and_update_db_image_vectors(
                 image = Image.open(img_path).convert('RGB')
             image_tensor = preprocess_transform(image).unsqueeze(0).to(device)
             with torch.no_grad():
-                vector = feature_extractor(image_tensor).cpu().numpy().flatten()
+                vector = feature_extractor(image_tensor)
+                vector = torch.nn.functional.normalize(vector, p=2, dim=1)  # L2 정규화
+                vector = vector.cpu().numpy().flatten()
             vector_json = json.dumps(vector.tolist())
             cursor.execute(
                 "UPDATE pet_image SET image_vector=%s WHERE pet_image_id=%s",

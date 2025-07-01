@@ -439,7 +439,7 @@ class DogDatabase:
         print(f"[DEBUG] 2. get_breed_codes() 반환: {len(breed_dict)}개")
         result = []
         for idx, img in enumerate(images):
-            print(f"[DEBUG] 3.{idx+1} 원본 img: {json.dumps({k: (str(v)[:80] if k=='image_vector' else v) for k,v in img.items()}, ensure_ascii=False, default=str)}") if idx < 3 else None
+            # print(f"[DEBUG] 3.{idx+1} 원본 img: {json.dumps({k: (str(v)[:80] if k=='image_vector' else v) for k,v in img.items()}, ensure_ascii=False, default=str)}") if idx < 3 else None
             public_url = img.get('public_url')
             if not public_url or not isinstance(public_url, str) or public_url.strip() == '':
                 print(f"[SKIP] public_url 누락: {img}")
@@ -466,7 +466,7 @@ class DogDatabase:
                     vec = np.frombuffer(vec, dtype=np.float32)
                 elif isinstance(vec, list):
                     vec = np.array(vec, dtype=np.float32)
-                print(f"[DEBUG] 4.{idx+1} image_vector 파싱 성공: shape={vec.shape if hasattr(vec, 'shape') else type(vec)}")
+                # print(f"[DEBUG] 4.{idx+1} image_vector 파싱 성공: shape={vec.shape if hasattr(vec, 'shape') else type(vec)}")  # 과도한 디버그 출력 주석 처리
             except Exception as e:
                 print(f"[SKIP] image_vector 파싱 실패: {public_url}, error: {e}")
                 continue
@@ -502,11 +502,10 @@ class DogDatabase:
                 'shelter_phone': img.get('shelter_phone'),
                 'shelter_address': img.get('shelter_address'),
             }
-            print(f"[DEBUG] 5.{idx+1} merged dict: {json.dumps({k: (str(v)[:80] if k=='image_vector' else v) for k,v in merged.items()}, ensure_ascii=False, default=str)}") if idx < 3 else None
+            # print(f"[DEBUG] 5.{idx+1} merged dict: {json.dumps({k: (str(v)[:80] if k=='image_vector' else v) for k,v in merged.items()}, ensure_ascii=False, default=str)}") if idx < 3 else None
             result.append(merged)
         print(f"[INFO] 최종 사용 가능한 이미지 {len(result)}개")
-        if result:
-            print(f"[예시 반환] get_all_pet_images -> {json.dumps({k: (str(v)[:100] if k=='image_vector' else v) for k,v in result[0].items()}, ensure_ascii=False, indent=2, default=str)}")
+        # print(f"[DEBUG] 최종 results: {results}")
         return convert_datetime_to_string(result)
 
 # 전역 DB 인스턴스

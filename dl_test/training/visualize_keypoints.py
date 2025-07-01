@@ -132,29 +132,33 @@ def detect_and_visualize_keypoints(
     pil_img.save(output_path)
     print(f"키포인트 시각화 저장: {output_path}")
 
-    # 결과를 이전 형식으로 변환
+    # 결과를 이전 형식으로 변환 (width, height 정보 포함)
     reconstructed_pose_results = []
     for pose_result in pose_results:
         if hasattr(pose_result, 'pred_instances'):
             keypoints_xy = pose_result.pred_instances.keypoints
             keypoint_scores = pose_result.pred_instances.keypoint_scores
-            
             # 텐서인 경우 numpy로 변환
             if hasattr(keypoints_xy, 'cpu'):
                 keypoints_xy = keypoints_xy.cpu().numpy()
             if hasattr(keypoint_scores, 'cpu'):
                 keypoint_scores = keypoint_scores.cpu().numpy()
-            
-            for i in range(keypoints_xy.shape[0]): 
-                kpt_xy = keypoints_xy[i] 
-                kpt_score = keypoint_scores[i] 
+            for i in range(keypoints_xy.shape[0]):
+                kpt_xy = keypoints_xy[i]
+                kpt_score = keypoint_scores[i]
                 combined_kpts = np.hstack((kpt_xy, kpt_score[:, np.newaxis]))
-                reconstructed_pose_results.append({'keypoints': combined_kpts})
+                reconstructed_pose_results.append({'keypoints': combined_kpts, 'img_width': img_width, 'img_height': img_height})
         else:
-            # 이전 형식 그대로 사용
-            reconstructed_pose_results.append(pose_result)
+            # 이전 형식 그대로 사용, width/height 추가
+            pose_dict = dict(pose_result)
+            pose_dict['img_width'] = img_width
+            pose_dict['img_height'] = img_height
+            reconstructed_pose_results.append(pose_dict)
 
-    return output_path, reconstructed_pose_results 
+    # pose_results가 비어있으면 None 반환 (언팩 에러 방지)
+    if not reconstructed_pose_results:
+        return None, None
+    return output_path, reconstructed_pose_results
 
 def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCLR_IMAGE_SIZE):
     """
@@ -162,21 +166,50 @@ def calculate_keypoint_similarity(pose_results1, pose_results2, image_size=SIMCL
     (간단한 예시: 키포인트 위치의 L2 거리 기반)
     """
     if not pose_results1 or not pose_results2:
-        return 0.0 
+        print("[DEBUG] calculate_keypoint_similarity: pose_results1 or pose_results2 is empty")
+        return 0.0
 
-    kpts1 = pose_results1[0]['keypoints'] 
+    kpts1 = pose_results1[0]['keypoints']
     kpts2 = pose_results2[0]['keypoints']
 
-    min_kpts = min(len(kpts1), len(kpts2)) 
-    kpts1_xy = kpts1[:min_kpts, :2] 
+    min_kpts = min(len(kpts1), len(kpts2))
+    kpts1_xy = kpts1[:min_kpts, :2]
     kpts2_xy = kpts2[:min_kpts, :2]
-    
-    kpts1_xy_t = torch.from_numpy(kpts1_xy).float()
-    kpts2_xy_t = torch.from_numpy(kpts2_xy).float()
 
-    distance = torch.mean(torch.norm(kpts1_xy_t - kpts2_xy_t, dim=1)) / image_size
+    # 각 이미지의 width, height로 정규화
+    w1 = pose_results1[0].get('img_width', image_size)
+    h1 = pose_results1[0].get('img_height', image_size)
+    w2 = pose_results2[0].get('img_width', image_size)
+    h2 = pose_results2[0].get('img_height', image_size)
 
-    similarity = float(max(0.0, 1.0 - distance.item())) 
+    # (x, y) 각각 정규화
+    kpts1_xy_norm = np.zeros_like(kpts1_xy)
+    kpts2_xy_norm = np.zeros_like(kpts2_xy)
+    kpts1_xy_norm[:, 0] = kpts1_xy[:, 0] / w1
+    kpts1_xy_norm[:, 1] = kpts1_xy[:, 1] / h1
+    kpts2_xy_norm[:, 0] = kpts2_xy[:, 0] / w2
+    kpts2_xy_norm[:, 1] = kpts2_xy[:, 1] / h2
+
+    print(f"[DEBUG] kpts1_xy_norm: {kpts1_xy_norm}")
+    print(f"[DEBUG] kpts2_xy_norm: {kpts2_xy_norm}")
+
+    # NaN/Inf 체크
+    if np.any(np.isnan(kpts1_xy_norm)) or np.any(np.isnan(kpts2_xy_norm)):
+        print("[DEBUG] NaN detected in normalized keypoints!")
+        return 0.0
+    if np.any(np.isinf(kpts1_xy_norm)) or np.any(np.isinf(kpts2_xy_norm)):
+        print("[DEBUG] Inf detected in normalized keypoints!")
+        return 0.0
+
+    kpts1_xy_t = torch.from_numpy(kpts1_xy_norm).float()
+    kpts2_xy_t = torch.from_numpy(kpts2_xy_norm).float()
+
+    distance = torch.mean(torch.norm(kpts1_xy_t - kpts2_xy_t, dim=1))
+    print(f"[DEBUG] keypoint L2 distance: {distance.item()}")
+
+    # distance가 0에 가까울수록 유사도 1, distance가 커질수록 유사도 0에 가까워짐
+    similarity = float(1.0 / (1.0 + distance.item()))
+    print(f"[DEBUG] keypoint similarity (1/(1+d)): {similarity}")
     return similarity
 
 def draw_advanced_keypoints_rgb(img_rgb, pose_results):
@@ -336,11 +369,23 @@ if __name__ == "__main__":
         
         print("\n--- SimCLR 기반 가장 유사한 강아지 검색 결과 (상위 5개) ---")
         # 쿼리 이미지 키포인트 검출 및 시각화
+
         print(f"\n쿼리 이미지 키포인트 검출 및 시각화: {query_image_path}")
-        # detect_and_visualize_keypoints 호출 시 dataset_info 인자 제거
         query_kp_output_path, query_pose_results = detect_and_visualize_keypoints(
             query_image_path, ap10k_model, ap10k_device, visualizer
         )
+        print("[DEBUG] 쿼리 pose_results type:", type(query_pose_results))
+        print("[DEBUG] 쿼리 pose_results len:", len(query_pose_results) if query_pose_results else 0)
+        if query_pose_results:
+            print("[DEBUG] 쿼리 pose_results[0] type:", type(query_pose_results[0]))
+            print("[DEBUG] 쿼리 pose_results[0] keys:", list(query_pose_results[0].keys()) if isinstance(query_pose_results[0], dict) else "(not dict)")
+            if isinstance(query_pose_results[0], dict) and 'keypoints' in query_pose_results[0]:
+                print("[DEBUG] 쿼리 keypoints shape:", query_pose_results[0]['keypoints'].shape)
+                print("[DEBUG] 쿼리 keypoints sample:\n", query_pose_results[0]['keypoints'])
+            else:
+                print("[DEBUG] 쿼리 pose_results[0]에 'keypoints' 없음 또는 타입 불일치")
+        else:
+            print("[DEBUG] 쿼리 pose_results가 None 또는 빈 리스트임")
 
         final_results = []
 
@@ -351,11 +396,24 @@ if __name__ == "__main__":
                 db_img_path = result.get('image_url') or result.get('image_path')
             else:
                 simclr_score, db_img_path = result
+
             print(f"\n--- 유사 강아지 {i+1}: {db_img_path} (SimCLR 유사도: {simclr_score:.4f}) ---")
-            # DB 이미지 키포인트 검출 및 시각화
             db_kp_output_path, db_pose_results = detect_and_visualize_keypoints(
                 db_img_path, ap10k_model, ap10k_device, visualizer
             )
+
+            print(f"[DEBUG] DB pose_results for {db_img_path} type:", type(db_pose_results))
+            print(f"[DEBUG] DB pose_results for {db_img_path} len:", len(db_pose_results) if db_pose_results else 0)
+            if db_pose_results:
+                print(f"[DEBUG] DB pose_results[0] type:", type(db_pose_results[0]))
+                print(f"[DEBUG] DB pose_results[0] keys:", list(db_pose_results[0].keys()) if isinstance(db_pose_results[0], dict) else "(not dict)")
+                if isinstance(db_pose_results[0], dict) and 'keypoints' in db_pose_results[0]:
+                    print(f"[DEBUG] DB keypoints shape:", db_pose_results[0]['keypoints'].shape)
+                    print(f"[DEBUG] DB keypoints sample:\n", db_pose_results[0]['keypoints'])
+                else:
+                    print(f"[DEBUG] DB pose_results[0]에 'keypoints' 없음 또는 타입 불일치")
+            else:
+                print(f"[DEBUG] DB pose_results가 None 또는 빈 리스트임")
 
             keypoint_similarity = 0.0
             if query_pose_results and db_pose_results:

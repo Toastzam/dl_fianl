@@ -4,6 +4,7 @@ from PIL import Image
 from torchvision import transforms
 import os
 import torch.nn.functional as F # 코사인 유사도 계산을 위해 임포트
+import sys, os
 
 # --- 프로젝트 구조에 맞춰 필요한 클래스/함수 임포트 ---
 try:
@@ -18,10 +19,14 @@ except ImportError:
 try:
     from database import get_dog_by_image_path
 except ImportError:
-    get_dog_by_image_path = None  # 테스트 환경 등에서 None 처리
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
+    try:
+        from database import get_dog_by_image_path
+    except ImportError:
+        get_dog_by_image_path = None  # 테스트 환경 등에서 None 처리
 
 # --- 설정 (extract_features.py 및 extract_db_features.py에서 가져옴) ---
-OUT_DIM = 192 # 실제 DB 특징 벡터와 일치하도록 수정 (기존 128에서 변경)
+OUT_DIM = 128
 MODEL_PATH = 'models/simclr_vit_dog_model.pth' 
 IMAGE_SIZE = 224
 DB_FEATURES_FILE = 'db_features.npy' # 저장된 DB 특징 파일
@@ -72,7 +77,11 @@ def search_similar_dogs(
     
     db_features = np.load(db_features_file)
     db_image_paths = np.load(db_image_paths_file)
-    
+    print(f"[DEBUG] db_features shape: {db_features.shape}, dtype: {db_features.dtype}, min: {db_features.min()}, max: {db_features.max()}")
+    print(f"[DEBUG] db_image_paths shape: {db_image_paths.shape}, 예시: {db_image_paths[:3]}")
+    # DB 벡터 값 분포 (샘플 5개)
+    for i in range(min(5, db_features.shape[0])):
+        print(f"[DEBUG] db_features[{i}] values: min={db_features[i].min()}, max={db_features[i].max()}, mean={db_features[i].mean()}, std={db_features[i].std()}")
     # NumPy 배열을 PyTorch 텐서로 변환하고 GPU로 이동 (한 번만 수행)
     db_features_tensor = torch.from_numpy(db_features).float().to(device)
     print(f"DB 특징 {db_features_tensor.shape} 로드 완료.")
@@ -83,28 +92,23 @@ def search_similar_dogs(
 
     query_image = Image.open(query_image_path).convert('RGB')
     query_tensor = preprocess_transform(query_image)
-    
+    print(f"[DEBUG] query_tensor shape: {query_tensor.shape}, min: {query_tensor.min().item()}, max: {query_tensor.max().item()}")
     # 배치 차원 추가
     query_batch = query_tensor.unsqueeze(0).to(device)
 
     with torch.no_grad():
         query_features = feature_extractor(query_batch)
-    
+    print(f"[DEBUG] query_features shape: {query_features.shape}, min: {query_features.min().item()}, max: {query_features.max().item()}, mean: {query_features.mean().item()}, std: {query_features.std().item()}")
     # 특징 벡터를 정규화합니다. 코사인 유사도 계산 전에 정규화하는 것이 일반적입니다.
     # F.normalize는 기본적으로 L2 정규화를 수행합니다.
     query_features_normalized = F.normalize(query_features, p=2, dim=1)
     db_features_normalized = F.normalize(db_features_tensor, p=2, dim=1)
-    
+    print(f"[DEBUG] query_features_normalized norm: {torch.norm(query_features_normalized).item()}")
+    print(f"[DEBUG] db_features_normalized norm (first 5): {[torch.norm(db_features_normalized[i]).item() for i in range(min(5, db_features_normalized.shape[0]))]}")
     # 4. 코사인 유사도 계산
-    # (쿼리 특징 벡터 x DB 특징 벡터들)의 내적 = 코사인 유사도 (정규화된 벡터일 때)
-    # query_features_normalized: [1, OUT_DIM]
-    # db_features_normalized: [Num_DB_Images, OUT_DIM]
-    # 결과 유사도: [1, Num_DB_Images]
     similarities = torch.matmul(query_features_normalized, db_features_normalized.transpose(0, 1))
-    
-    # 유사도 텐서를 NumPy 배열로 변환
     similarities_np = similarities.cpu().numpy().flatten() # 1차원 배열로 만듬
-
+    print(f"[DEBUG] similarities_np (first 10): {similarities_np[:10]}")
     # 5. 유사도 기준으로 상위 K개 결과 정렬
     # 유사도 점수가 높은 순서대로 인덱스를 가져옵니다.
     top_k_indices = similarities_np.argsort()[-top_k:][::-1] # 내림차순 정렬
@@ -165,6 +169,7 @@ def load_db_vectors_and_urls(
         urls.append(url)
         try:
             vec = np.array(json.loads(vec_json))
+            # print(f"[DEBUG] {url} image_vector 파싱 성공: shape={vec.shape}")  # 과도한 디버그 출력 주석 처리
         except Exception:
             vec = np.zeros(OUT_DIM)
         vectors.append(vec)
@@ -188,17 +193,25 @@ def search_similar_dogs_db(
     db_vectors, db_urls = load_db_vectors_and_urls(
         db_host, db_user, db_password, db_name, db_port
     )
+    print(f"[DEBUG] DB 벡터 shape: {db_vectors.shape}, min: {db_vectors.min()}, max: {db_vectors.max()}")
+    print(f"[DEBUG] DB URL 개수: {len(db_urls)}, 예시: {db_urls[:3]}")
     db_vectors_tensor = torch.from_numpy(db_vectors).float().to(device)
     # 쿼리 이미지 벡터 추출
     query_image = Image.open(query_image_path).convert('RGB')
     query_tensor = preprocess_transform(query_image).unsqueeze(0).to(device)
+    print(f"[DEBUG] 쿼리 이미지 벡터 shape: {query_tensor.shape}, min: {query_tensor.min().item()}, max: {query_tensor.max().item()}")
     with torch.no_grad():
         query_features = feature_extractor(query_tensor)
+    print(f"[DEBUG] 쿼리 특징 벡터 shape: {query_features.shape}, min: {query_features.min().item()}, max: {query_features.max().item()}")
     query_features_normalized = F.normalize(query_features, p=2, dim=1)
     db_features_normalized = F.normalize(db_vectors_tensor, p=2, dim=1)
+    print(f"[DEBUG] query_features_normalized norm: {torch.norm(query_features_normalized).item()}")
+    print(f"[DEBUG] db_features_normalized norm (first 5): {[torch.norm(db_features_normalized[i]).item() for i in range(min(5, db_features_normalized.shape[0]))]}")
     similarities = torch.matmul(query_features_normalized, db_features_normalized.transpose(0, 1))
     similarities_np = similarities.cpu().numpy().flatten()
+    print(f"[DEBUG] similarities: {similarities_np[:10]}")
     top_k_indices = similarities_np.argsort()[-top_k:][::-1]
+    print(f"[DEBUG] top_k 인덱스: {top_k_indices}")
     results = []
     for idx in top_k_indices:
         results.append({

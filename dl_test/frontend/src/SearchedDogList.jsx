@@ -569,7 +569,7 @@ const SearchedDogList = ({ searchResults, onSelectDog, onBackToSearch, originalI
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span>✨ SimCLR 유사도:</span>
                         <span style={{ fontWeight: 'bold', color: grade.color }}>
-                          {((dog.similarity || 0) * 100).toFixed(1)}%
+                          {((dog.simclr_similarity || 0) * 100).toFixed(1)}%
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px' }}>

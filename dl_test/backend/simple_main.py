@@ -209,21 +209,21 @@ async def real_model_search(file_location: str, filename: str):
             db_info = sim_result.get('db_info', {}).copy()
             if 'image_vector' in db_info:
                 del db_info['image_vector']
-            print(f"[DEBUG] db_info({i+1}): {db_info}")
+            # print(f"[DEBUG] db_info({i+1}): {db_info}")
             print(f"  🔍 유사 이미지 {i+1}/{len(similar_results)} 처리: {os.path.basename(image_url)}")
             keypoint_similarity = 0.0
             similar_kp_output_path = None
             try:
-                print(f"[DEBUG] detect_and_visualize_keypoints 호출: {image_url}")
+                # print(f"[DEBUG] detect_and_visualize_keypoints 호출: {image_url}")
                 similar_kp_output_path, similar_pose_results = detect_and_visualize_keypoints(
                     image_url, ap10k_model, device, visualizer
                 )
-                print(f"[DEBUG] 키포인트 결과: {similar_kp_output_path}")
+                # print(f"[DEBUG] 키포인트 결과: {similar_kp_output_path}")
                 if query_pose_results and similar_pose_results:
                     keypoint_similarity = calculate_keypoint_similarity(
                         query_pose_results, similar_pose_results
                     )
-                    print(f"[DEBUG] keypoint_similarity: {keypoint_similarity}")
+                    # print(f"[DEBUG] keypoint_similarity: {keypoint_similarity}")
             except Exception as e:
                 print(f"⚠️ 키포인트 검출 실패 (URL: {image_url}): {e}")
             combined_similarity = (0.7 * simclr_score) + (0.3 * keypoint_similarity)
@@ -236,14 +236,14 @@ async def real_model_search(file_location: str, filename: str):
                 'combined_similarity': float(combined_similarity),
                 'db_info': db_info
             }
-            print(f"[DEBUG] result_dict({i+1}): {result_dict}")
+            # print(f"[DEBUG] result_dict({i+1}): {result_dict}")
             results.append(result_dict)
             print(f"    ✅ SimCLR: {simclr_score:.4f}, 키포인트: {keypoint_similarity:.4f}, 복합: {combined_similarity:.4f}")
         results.sort(key=lambda x: x['combined_similarity'], reverse=True)
         print("🔍 단계 4: 복합 유사도로 재정렬 완료")
         for i, result in enumerate(results):
             result['rank'] = i + 1
-        print(f"[DEBUG] 최종 results: {results}")
+        # print(f"[DEBUG] 최종 results: {results}")
         try:
             from database import get_all_dogs
             total_dogs = len(get_all_dogs())
@@ -910,6 +910,10 @@ async def get_breed_codes_api():
 @app.get("/")
 async def root():
     return {"message": "Dog Similarity Search API"}
+
+# feature_extraction_service의 FastAPI router 등록
+from feature_extraction_service import router as feature_router
+app.include_router(feature_router)
 
 if __name__ == "__main__":
     import uvicorn
