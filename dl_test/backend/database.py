@@ -12,13 +12,15 @@ from datetime import datetime, date
 from decimal import Decimal
 import numpy as np
 
-# MySQL DB 연결 정보
+# MySQL DB 연결 정보는 .env 파일에서 불러옵니다.
+from dotenv import load_dotenv
+load_dotenv()
 DB_CONFIG = {
-    'host': 'byhou.synology.me',
-    'port': 3370,
-    'user': 'h3',
-    'password': 'Dbrlrus25^',
-    'database': 'h3',
+    'host': os.getenv('DB_HOST'),
+    'port': int(os.getenv('DB_PORT', 3306)),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD'),
+    'database': os.getenv('DB_NAME'),
     'charset': 'utf8mb4',
     'autocommit': True
 }
