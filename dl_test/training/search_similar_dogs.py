@@ -27,7 +27,7 @@ except ImportError:
 
 # --- 설정 (extract_features.py 및 extract_db_features.py에서 가져옴) ---
 OUT_DIM = 128
-MODEL_PATH = 'models/simclr_vit_dog_model.pth' 
+MODEL_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'
 IMAGE_SIZE = 224
 DB_FEATURES_FILE = 'db_features.npy' # 저장된 DB 특징 파일
 DB_IMAGE_PATHS_FILE = 'db_image_paths.npy' # 저장된 DB 이미지 경로 파일

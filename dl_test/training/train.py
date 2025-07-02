@@ -30,7 +30,7 @@ TEMPERATURE = 0.07 # SimCLR Loss 계산 시 사용되는 온도 파라미터 (�
 
 DATA_ROOT = 'training/Images' # 데이터셋 경로
 
-SAVE_PATH = 'models/simclr_vit_dog_model.pth' # 모델 가중치 저장경로
+SAVE_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth' # 모델 가중치 저장경로
 
 
 # --- Contrastive Loss (NT-Xent Loss) 구현 ---

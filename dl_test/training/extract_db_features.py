@@ -13,11 +13,11 @@ from io import BytesIO
 from extract_features import setup_feature_extractor 
 
 # --- 설정 (train.py에서 가져옴, 필요에 따라 조정) ---
-DATA_ROOT = 'training/Images' 
-OUT_DIM = 128 
-MODEL_PATH = 'models/simclr_vit_dog_model.pth' 
+DATA_ROOT = 'training/Images'
+OUT_DIM = 128
+MODEL_PATH = os.path.abspath('models/simclr_vit_dog_model_finetuned_v1.pth')
 IMAGE_SIZE = 224
-BATCH_SIZE = 128 
+BATCH_SIZE = 128
 FEATURES_SAVE_FILE = 'db_features.npy'
 IMAGE_PATHS_SAVE_FILE = 'db_image_paths.npy'
 

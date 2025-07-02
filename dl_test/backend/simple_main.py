@@ -106,10 +106,10 @@ app.add_middleware(
 
 # SimCLR 관련 설정 (항상 절대경로 사용)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # backend 기준으로 절대경로
-SIMCLR_MODEL_PATH = os.path.join(BASE_DIR, '..', 'models', 'simclr_vit_dog_model.pth')
+SIMCLR_MODEL_PATH = os.path.join(BASE_DIR, '..', 'models', 'simclr_vit_dog_model_finetuned_v1.pth')
 if not os.path.exists(SIMCLR_MODEL_PATH):
     # fallback: dl_test/models/ 경로도 시도
-    alt_path = os.path.join(BASE_DIR, '..', 'dl_test', 'models', 'simclr_vit_dog_model.pth')
+    alt_path = os.path.join(BASE_DIR, '..', 'dl_test', 'models', 'simclr_vit_dog_model_finetuned_v1.pth')
     if os.path.exists(alt_path):
         SIMCLR_MODEL_PATH = alt_path
     else:

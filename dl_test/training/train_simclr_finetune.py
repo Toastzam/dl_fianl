@@ -17,7 +17,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # --- 하이퍼파라미터 및 경로 설정 ---
 DATA_DIR = 'training/Images'  # DB 이미지 폴더 (클래스별 하위폴더 가능, 라벨 미사용)
-PRETRAINED_MODEL_PATH = 'models/simclr_vit_dog_model.pth'  # 기존 SimCLR 사전학습 모델
+PRETRAINED_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'  # 파인튜닝된 SimCLR 모델
 FINETUNED_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned.pth'  # 파인튜닝 후 저장 경로
 BATCH_SIZE = 32
 EPOCHS = 10
