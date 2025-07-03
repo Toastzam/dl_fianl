@@ -16,11 +16,12 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # --- 하이퍼파라미터 및 경로 설정 ---
+MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../models'))
 DATA_DIR = 'training/Images'  # DB 이미지 폴더 (클래스별 하위폴더 가능, 라벨 미사용)
-PRETRAINED_MODEL_PATH = 'models/simclr_vit_dog_model.pth'  # 기존 SimCLR 사전학습 모델
-FINETUNED_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned.pth'  # 파인튜닝 후 저장 경로
-BATCH_SIZE = 32
-EPOCHS = 10
+PRETRAINED_MODEL_PATH = os.path.join(MODELS_DIR, 'simclr_vit_dog_model.pth')  # 기존 SimCLR 사전학습 모델
+# FINETUNED_MODEL_PATH는 아래에서 동적으로 생성
+BATCH_SIZE = 128
+EPOCHS = 60
 LR = 1e-4
 IMAGE_SIZE = 224
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -30,6 +31,17 @@ SAVE_DIR = 'training/Images/all'
 os.makedirs(SAVE_DIR, exist_ok=True)
 
 if __name__ == "__main__":
+    # --- 버전 넘버로 저장 파일명 자동 생성 ---
+    import re
+    import glob
+    # 기존 finetuned 모델 파일들 중 버전 넘버 추출 (절대경로 사용)
+    finetuned_files = glob.glob(os.path.join(MODELS_DIR, 'simclr_vit_dog_model_finetuned_v*.pth'))
+    version_numbers = [
+        int(re.search(r"finetuned_v(\\d+)\\.pth", f).group(1))
+        for f in finetuned_files if re.search(r"finetuned_v(\\d+)\\.pth", f)
+    ]
+    next_version = max(version_numbers) + 1 if version_numbers else 1
+    FINETUNED_MODEL_PATH = os.path.join(MODELS_DIR, f"simclr_vit_dog_model_finetuned_v{next_version}.pth")
 
     # --- 데이터셋 및 데이터로더 ---
     transform = transforms.Compose([
@@ -53,17 +65,17 @@ if __name__ == "__main__":
     )
 
     # --- 데이터/정규화/샘플 체크 ---
-    import matplotlib.pyplot as plt
+    # import matplotlib.pyplot as plt
     import numpy as np
-    def show_img(tensor_img, title=""):
-        img = tensor_img.clone().detach().cpu().numpy()
-        img = np.transpose(img, (1,2,0))
-        img = img * np.array([0.229,0.224,0.225]) + np.array([0.485,0.456,0.406])
-        img = np.clip(img, 0, 1)
-        plt.imshow(img)
-        plt.title(title)
-        plt.axis('off')
-        plt.show()
+    # def show_img(tensor_img, title=""):
+    #     img = tensor_img.clone().detach().cpu().numpy()
+    #     img = np.transpose(img, (1,2,0))
+    #     img = img * np.array([0.229,0.224,0.225]) + np.array([0.485,0.456,0.406])
+    #     img = np.clip(img, 0, 1)
+    #     plt.imshow(img)
+    #     plt.title(title)
+    #     plt.axis('off')
+    #     plt.show()
 
     # 데이터 샘플 체크
     sample_img, _ = dataset[0]
@@ -73,7 +85,15 @@ if __name__ == "__main__":
 
     # --- SimCLR ViT 모델 불러오기 (model.py 기반) ---
     model = SimCLRVIT(out_dim=128)
-    if os.path.exists(PRETRAINED_MODEL_PATH):
+    # 가장 최근 finetuned 모델이 있으면 불러오기 (절대경로 사용, 버전 없는 파일도 포함)
+    finetuned_files = sorted(
+        glob.glob(os.path.join(MODELS_DIR, 'simclr_vit_dog_model_finetuned*.pth')),
+        reverse=True
+    )
+    if finetuned_files:
+        model.load_state_dict(torch.load(finetuned_files[0], map_location=DEVICE))
+        print(f"이전 파인튜닝 모델 로드: {finetuned_files[0]}")
+    elif os.path.exists(PRETRAINED_MODEL_PATH):
         model.load_state_dict(torch.load(PRETRAINED_MODEL_PATH, map_location=DEVICE))
         print(f"사전학습 SimCLR 모델 로드: {PRETRAINED_MODEL_PATH}")
     else:
@@ -139,7 +159,7 @@ if __name__ == "__main__":
             loss.backward()
             optimizer.step()
             total_loss += loss.item()
-            print(f"[Loss] {loss.item():.4f}")
+            # print(f"[Loss] {loss.item():.4f}")
         print(f"Epoch {epoch+1} Loss: {total_loss/len(dataloader):.4f}")
 
     # --- 파인튜닝된 모델 저장 ---
