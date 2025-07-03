@@ -5,6 +5,8 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [progress, setProgress] = useState(0);
+  const progressRef = useRef(0);
   const fileInputRef = useRef(null);
 
   // API 서버 주소 설정 (다른 로컬에서 접속 가능)
@@ -35,6 +37,14 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
 
     setLoading(true);
     setMessage('강아지 유사도 분석 중...');
+    setProgress(0);
+    progressRef.current = 0;
+    // 가짜 진행률 애니메이션 시작
+    // 약 9초에 95% 도달하도록: 1.8~2.1%씩 200ms마다 증가
+    const progressInterval = setInterval(() => {
+      progressRef.current = Math.min(progressRef.current + (Math.random() * 0.3 + 1.8), 95);
+      setProgress(progressRef.current);
+    }, 200);
 
     // 디버깅: API URL 확인
     const apiUrl = getApiBaseUrl();
@@ -68,6 +78,8 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
 
       // 강아지 이미지가 아닐 때(백엔드에서 판별 실패)
       if (!data.success && data.error === 'not_a_dog') {
+        clearInterval(progressInterval);
+        setProgress(100);
         let debugInfo = '';
         if (data.dog_check) {
           debugInfo = `\n(디버그: 키포인트 ${data.dog_check.num_keypoints}개, 평균신뢰도 ${data.dog_check.avg_score?.toFixed(2)}, SimCLR최대유사도 ${data.dog_check.max_simclr_similarity?.toFixed(3)})`;
@@ -77,14 +89,16 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
       }
 
       if (data.success) {
+        clearInterval(progressInterval);
+        setProgress(100);
         console.log('🎯 검색 결과 개수:', data.results?.length || 0);
         console.log('🖼️  검색 결과 이미지 정보:');
         data.results?.forEach((dog, index) => {
-          console.log(`  ${index + 1}. ID: ${dog.id}, 이름: ${dog.name || '이름없음'}`);
+          console.log(`  ${index + 1}. ID: ${dog.id}, 이름: ${dog.db_info?.name || dog.name || '이름없음'}`);
           console.log(`     이미지 URL: ${dog.image_url || dog.image_path}`);
-          console.log(`     견종: ${dog.breed} (코드: ${dog.breed_code})`);
-          console.log(`     성별: ${dog.gender} (코드: ${dog.gender_code})`);
-          console.log(`     입양상태: ${dog.adoption_status} (코드: ${dog.adoption_status_code})`);
+          console.log(`     견종: ${dog.db_info?.breed_name || dog.db_info?.breed || dog.breed} (코드: ${dog.db_info?.breed_code || dog.breed_code})`);
+          console.log(`     성별: ${dog.db_info?.gender || dog.gender} (코드: ${dog.db_info?.gender_code || dog.gender_code})`);
+          console.log(`     입양상태: ${dog.db_info?.adoption_status || dog.adoption_status} (코드: ${dog.db_info?.adoption_status_code || dog.adoption_status_code})`);
           console.log(`     유사도: ${dog.combined_similarity || dog.overall_similarity}`);
         });
 
@@ -102,16 +116,29 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
           queryKeypointImageUrl = `${getApiBaseUrl()}/api/image/output_keypoints/${filename}`;
         }
 
-        onSearchResults(data.results, previewUrl, queryKeypointImageUrl, data.search_metadata);
+        // query_image가 로컬 경로(c:/.../uploads/...)면 /uploads/부터 잘라서 웹 경로로 변환
+        let originalImageUrl = data.query_image;
+        if (originalImageUrl && originalImageUrl.includes('/uploads/')) {
+          const idx = originalImageUrl.lastIndexOf('/uploads/');
+          if (idx !== -1) {
+            originalImageUrl = originalImageUrl.slice(idx);
+          }
+        }
+        onSearchResults(data.results, originalImageUrl, queryKeypointImageUrl, data.search_metadata);
         setMessage('검색 완료! 결과를 확인해보세요.');
       } else {
+        clearInterval(progressInterval);
+        setProgress(100);
         setMessage(data.message || '검색에 실패했습니다. 다시 시도해주세요.');
       }
     } catch (error) {
+      clearInterval(progressInterval);
+      setProgress(100);
       console.error('검색 오류:', error);
       setMessage('네트워크 오류가 발생했습니다. 다시 시도해주세요.');
     } finally {
       setLoading(false);
+      setTimeout(() => setProgress(0), 800); // 완료 후 게이지 잠깐 보여주고 리셋
     }
   };
 
@@ -244,9 +271,8 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
             onChange={handleFileSelect}
             style={{ display: 'none' }}
           />
-
-          {/* 메시지 표시 */}
-          {message && (
+          {/* 메시지 + 진행률 표시 */}
+          {(message || loading) ? (
             <div
               style={{
                 padding: '15px',
@@ -256,12 +282,35 @@ const SearchMyDog = ({ onClose, onSearchResults }) => {
                 backgroundColor: loading ? '#e3f2fd' : message.includes('완료') ? '#e8f5e8' : '#fff3e0',
                 color: loading ? '#1976d2' : message.includes('완료') ? '#388e3c' : '#f57c00',
                 border: `2px solid ${loading ? '#bbdefb' : message.includes('완료') ? '#c8e6c9' : '#ffcc02'}`,
+                position: 'relative',
+                marginBottom: '10px',
+                minHeight: '38px',
               }}
             >
-              {loading && <span style={{ marginRight: '8px' }}>⏳</span>}
-              {message}
+              {loading ? (
+                <React.Fragment>
+                  <span style={{ marginRight: '8px' }}>⏳</span>
+                  <span style={{ fontWeight: 'bold' }}>{message}</span>
+                  <div style={{
+                    marginTop: '10px',
+                    width: '100%',
+                    height: '10px',
+                    background: '#e0e0e0',
+                    borderRadius: '5px',
+                    overflow: 'hidden',
+                  }}>
+                    <div style={{
+                      width: progress + '%',
+                      height: '100%',
+                      background: 'linear-gradient(90deg, #4ECDC4, #FF6B6B)',
+                      transition: 'width 0.3s',
+                    }} />
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#888', marginTop: '2px' }}>{Math.floor(progress)}%</div>
+                </React.Fragment>
+              ) : message}
             </div>
-          )}
+          ) : null}
 
           {/* 검색 버튼 */}
           <button

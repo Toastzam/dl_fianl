@@ -34,7 +34,7 @@ DB_IMAGE_PATHS_FILE = 'db_image_paths.npy' # 저장된 DB 이미지 경로 파�
 
 def search_similar_dogs(
     query_image_path: str, 
-    top_k: int = 5, 
+    top_k: int = 6, 
     model_path: str = MODEL_PATH, 
     out_dim: int = OUT_DIM, 
     image_size: int = IMAGE_SIZE,
@@ -179,7 +179,7 @@ def load_db_vectors_and_urls(
 def search_similar_dogs_db(
     query_image_path: str,
     db_host, db_user, db_password, db_name, db_port=3306,
-    top_k: int = 5,
+    top_k: int = 6,
     model_path: str = MODEL_PATH,
     out_dim: int = OUT_DIM,
     image_size: int = IMAGE_SIZE
@@ -239,7 +239,7 @@ if __name__ == "__main__":
 
     try:
         print("\n[.npy 기반 검색 결과]")
-        top_similar_dogs = search_similar_dogs(query_image_path=query_img_path, top_k=5)
+        top_similar_dogs = search_similar_dogs(query_image_path=query_img_path, top_k=6)
         
         for i, result in enumerate(top_similar_dogs):
             score = result['similarity']
@@ -269,7 +269,7 @@ if __name__ == "__main__":
             db_password=db_password,
             db_name=db_name,
             db_port=db_port,
-            top_k=5
+            top_k=6
         )
         for i, result in enumerate(top_similar_dogs_db):
             score = result['similarity']

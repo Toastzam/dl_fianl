@@ -14,15 +14,21 @@ import numpy as np
 
 # MySQL DB 연결 정보는 .env 파일에서 불러옵니다.
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '..', '.env'))
 DB_CONFIG = {
     'host': os.getenv('DB_HOST'),
-    'port': int(os.getenv('DB_PORT', 3306)),
+    'port': int(os.getenv('DB_PORT', 3370)),  # 기본값을 3370으로 변경
     'user': os.getenv('DB_USER'),
     'password': os.getenv('DB_PASSWORD'),
     'database': os.getenv('DB_NAME'),
     'charset': 'utf8mb4',
-    'autocommit': True
+    'autocommit': True,
+    'use_pure': True,
+    'connection_timeout': 10,
+    'raise_on_warnings': True,
+    # 'allow_public_key_retrieval': True,  # mysql-connector-python에서는 지원하지 않으므로 제거
+    'use_unicode': True,
+    'ssl_disabled': True  # 외부 NAS 접속 시 SSL 미사용(환경에 따라 조정)
 }
 
 def serialize_datetime(obj):
@@ -59,12 +65,19 @@ class DogDatabase:
             print(f"❌ MySQL 연결 실패: {e}")
     
     def get_connection(self):
-        """MySQL DB 연결 생성"""
+        """MySQL DB 연결 생성 (TCP/IP 강제, named pipe 방지, None 안전 처리)"""
         try:
-            connection = mysql.connector.connect(**self.db_config)
+            db_config = self.db_config.copy()
+            host_value = db_config.get('host')
+            if not host_value:
+                db_config['host'] = '127.0.0.1'
+            elif str(host_value).strip() in ['localhost', '.', '::1']:
+                db_config['host'] = '127.0.0.1'
+            connection = mysql.connector.connect(**db_config)
             return connection
         except Error as e:
             print(f"❌ DB 연결 오류: {e}")
+            print(f"[DEBUG] DB_CONFIG: {self.db_config}")
             raise
     
     def check_database_connection(self):

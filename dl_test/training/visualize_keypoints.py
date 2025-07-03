@@ -494,7 +494,7 @@ if __name__ == "__main__":
         
         top_similar_dogs_simclr = search_similar_dogs(
             query_image_path=query_image_path, 
-            top_k=5,
+            top_k=6,
             model_path=SIMCLR_MODEL_PATH,
             out_dim=SIMCLR_OUT_DIM,
             image_size=SIMCLR_IMAGE_SIZE,

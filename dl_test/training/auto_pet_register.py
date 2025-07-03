@@ -68,9 +68,9 @@ import json
 from datetime import datetime
 
 # 프론트엔드와 맞는 필드 및 코드 매핑 필요
-API_BASE = "http://192.168.0.38:8081"  # 실제 서버 주소로 변경 (루트)
+API_BASE = "http://192.168.0.38:8081"  
 IMAGES_DIR = os.path.join(os.path.dirname(__file__), "images")
-NUM_TO_REGISTER = 500 # 등록할 이미지 개수
+NUM_TO_REGISTER = 300 # 등록할 이미지 개수
 
 
 features = [

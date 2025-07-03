@@ -116,7 +116,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
           fontWeight: 'bold',
           color: '#333'
         }}>
-          🐕 상세 분석 결과
+         상세 분석 결과
         </h1>
       </div>
 
@@ -140,7 +140,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
             color: '#333',
             fontWeight: 'bold'
           }}>
-            🔍 키포인트 비교 분석
+             유사도 비교 분석
           </h2>
 
           <div style={{
@@ -157,7 +157,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 color: '#FFD93D',
                 fontWeight: 'bold'
               }}>
-                🐕 검색한 강아지의 키포인트
+                검색한 강아지의 키포인트
               </h3>
               <div style={{
                 background: '#f8f9fa',
@@ -169,29 +169,39 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                {queryKeypointImage ? (
-                  <img
-                    src={queryKeypointImage}
-                    alt="검색 이미지 키포인트"
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '350px',
-                      objectFit: 'contain',
-                      borderRadius: '10px'
-                    }}
-                    onError={(e) => {
-                      console.log('검색 이미지 키포인트 로드 실패:', e.target.src);
-                      e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="300" height="300" fill="%23333"/><circle cx="150" cy="80" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="120" cy="110" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="180" cy="110" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="150" cy="180" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="110" cy="220" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="190" cy="220" r="6" fill="yellow" fill-opacity="0.3"/><line x1="150" y1="80" x2="120" y2="110" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="180" y2="110" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="150" y2="180" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="110" y2="220" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="190" y2="220" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><text x="150" y="260" text-anchor="middle" fill="white" font-family="Arial" font-size="16">검색 키포인트</text></svg>';
-                    }}
-                  />
-                ) : (
-                  <div style={{
-                    color: '#666',
-                    fontSize: '16px'
-                  }}>
-                    키포인트 이미지 로딩 중...
-                  </div>
-                )}
+                {/* 업로드 이미지의 백엔드 URL로 표시 (blob 대신) */}
+                {(() => {
+                  // queryKeypointImage가 /output_keypoints/ 또는 /uploads/ 등 백엔드 경로라면 변환
+                  const getQueryKeypointUrl = (imgPath) => {
+                    if (!imgPath) return '';
+                    // 백엔드에서 이미 /output_keypoints/ 경로로 반환됨
+                    const cleanPath = imgPath.startsWith('/') ? imgPath.slice(1) : imgPath;
+                    return `${getApiBaseUrl()}/image/${cleanPath}`;
+                  };
+                  return queryKeypointImage ? (
+                    <img
+                      src={getQueryKeypointUrl(queryKeypointImage)}
+                      alt="검색 이미지 키포인트"
+                      style={{
+                        maxWidth: '100%',
+                        maxHeight: '350px',
+                        objectFit: 'contain',
+                        borderRadius: '10px'
+                      }}
+                      onError={(e) => {
+                        console.log('검색 이미지 키포인트 로드 실패:', e.target.src);
+                        e.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300" viewBox="0 0 300 300"><rect width="300" height="300" fill="%23333"/><circle cx="150" cy="80" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="120" cy="110" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="180" cy="110" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="150" cy="180" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="110" cy="220" r="6" fill="yellow" fill-opacity="0.3"/><circle cx="190" cy="220" r="6" fill="yellow" fill-opacity="0.3"/><line x1="150" y1="80" x2="120" y2="110" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="180" y2="110" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="80" x2="150" y2="180" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="110" y2="220" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><line x1="150" y1="180" x2="190" y2="220" stroke="orange" stroke-width="3" stroke-opacity="0.3"/><text x="150" y="260" text-anchor="middle" fill="white" font-family="Arial" font-size="16">검색 키포인트</text></svg>';
+                      }}
+                    />
+                  ) : (
+                    <div style={{
+                      color: '#666',
+                      fontSize: '16px'
+                    }}>
+                      키포인트 이미지 로딩 중...
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -203,7 +213,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 color: '#4ECDC4',
                 fontWeight: 'bold'
               }}>
-                🎯 유사한 강아지의 키포인트
+                선택한 강아지의 키포인트
               </h3>
               <div style={{
                 background: '#f8f9fa',
@@ -257,8 +267,8 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
               color: '#666',
               lineHeight: '1.5'
             }}>
-              💡 <strong>키포인트 비교:</strong> 두 강아지의 주요 관절과 신체 부위의 위치를 비교하여 
-              포즈와 자세의 유사성을 분석합니다. 비슷한 위치의 키포인트들이 높은 유사도를 나타냅니다.
+              <strong>키포인트 비교:</strong> 두 강아지의 주요 관절과 신체 부위의 위치를 비교하여 
+              포즈와 자세의 유사성을 분석합니다.
             </p>
           </div>
         </div>
@@ -391,7 +401,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
               color: '#333',
               fontWeight: 'bold'
             }}>
-              🏆 검색 결과 정보
+              검색 결과 순위
             </h3>
 
             <div style={{
@@ -411,7 +421,6 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 color: '#666',
                 margin: 0
               }}>
-                검색 결과 순위
               </p>
             </div>
 
@@ -425,7 +434,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 marginBottom: '15px',
                 fontSize: '16px'
               }}>
-                📋 분석 요약
+                분석 요약
               </h4>
               <ul style={{
                 listStyle: 'none',
@@ -443,6 +452,9 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
                 </li>
                 <li style={{ marginBottom: '8px' }}>
                   • 종합 판정: {gradeInfo.label}
+                </li>
+                <li style={{ marginBottom: '8px' }}>
+                  • 키포인트 분석 시간: {currentDog.keypoint_processing_time != null ? `${currentDog.keypoint_processing_time}초` : '정보없음'}
                 </li>
                 <li>
                   • 신뢰도: {gradeInfo.grade}등급
@@ -492,13 +504,15 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                 <span>분석 시간:</span>
                 <span style={{ fontWeight: 'bold' }}>
-                  {searchMetadata?.processing_time || '0.34'}초
+                  {currentDog.keypoint_processing_time != null
+                    ? `${currentDog.keypoint_processing_time}초`
+                    : (searchMetadata?.processing_time || '0.34') + '초'}
                 </span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                 <span>모델 버전:</span>
                 <span style={{ fontWeight: 'bold' }}>
-                  {searchMetadata?.model_version || 'v2.1'}
+                  {searchMetadata?.model_version ? searchMetadata.model_version : '모델 버전 정보없음'}
                 </span>
               </div>
             </div>
@@ -521,7 +535,7 @@ const DogDetailView = ({ dogData, onBack, queryKeypointImage, searchMetadata }) 
               alignItems: 'center',
               gap: '8px'
             }}>
-              🎯 매칭 상세 정보
+              매칭 상세 정보
             </h4>
             <div style={{ fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
               <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
