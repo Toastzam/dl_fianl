@@ -1,15 +1,18 @@
+
 import os
 import requests
 import shutil
 import pymysql  # 또는 sqlite3 등 사용 가능
+from dotenv import load_dotenv
 
-# --- DB 연결 정보 ---
-DB_HOST = 'byhou.synology.me'
-DB_USER = 'h3'
-DB_PASSWORD = 'Dbrlrus25^'
-DB_NAME = 'h3'
-TABLE_NAME = 'pet_image'
-IMAGE_FIELD = 'public_url'  # 실제 컬럼명에 맞게 수정
+# --- 환경변수에서 DB 연결 정보 불러오기 ---
+load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
+DB_HOST = os.getenv('DB_HOST')
+DB_USER = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_NAME = os.getenv('DB_NAME')
+TABLE_NAME = os.getenv('TABLE_NAME', 'pet_image')
+IMAGE_FIELD = os.getenv('IMAGE_FIELD', 'public_url')
 
 
 # --- 저장 폴더 ---

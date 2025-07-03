@@ -29,8 +29,8 @@ LEARNING_RATE = 3e-4 # 학습률
 WEIGHT_DECAY = 1e-6 # 가중치 감소 (L2 정규화 효과)
 TEMPERATURE = 0.07 # SimCLR Loss 계산 시 사용되는 온도 파라미터 (논문 권장 값)
 
-# DATA_ROOT = 'training/Images' # 데이터셋 경로
-DATA_ROOT = os.path.join(os.path.dirname(__file__), "Images")
+DATA_ROOT = 'training/Images' # 데이터셋 경로
+
 SAVE_PATH = 'models/simclr_vit_dog_model.pth' # 모델 가중치 저장경로
 
 

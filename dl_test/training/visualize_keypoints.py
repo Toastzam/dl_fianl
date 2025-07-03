@@ -43,7 +43,75 @@ AP10K_CONFIG_FILE = os.path.join(MMPose_ROOT, 'configs', 'animal_2d_keypoint',
 AP10K_CHECKPOINT_FILE = os.path.join(MMPose_ROOT, 'checkpoints', 'hrnet_w32_ap10k_256x256-18aac840_20211029.pth') 
 
 # --- SimCLR 관련 설정 (이전 파일들에서 가져옴) ---
-SIMCLR_MODEL_PATH = 'models/simclr_vit_dog_model.pth' 
+
+# 강아지 keypoints 기반 bounding box 추출 util 함수 (auto_pet_register.py에서 import용)
+def get_dog_bbox_from_keypoints(image_path, ap10k_model, device, min_score=0.3):
+    """
+    이미지에서 강아지 keypoints를 검출하여 bounding box(x1, y1, x2, y2) 반환.
+    keypoints 신뢰도 min_score 이상만 사용. 실패 시 None 반환.
+    """
+    from PIL import Image
+    import numpy as np
+    import cv2
+    import io, requests, os
+    def pad_to_square(img, fill_color=(255,255,255)):
+        w, h = img.size
+        if w == h:
+            return img
+        size = max(w, h)
+        new_img = Image.new('RGB', (size, size), fill_color)
+        new_img.paste(img, ((size - w) // 2, (size - h) // 2))
+        return new_img
+
+    if image_path.startswith('http://') or image_path.startswith('https://'):
+        try:
+            response = requests.get(image_path, timeout=10)
+            response.raise_for_status()
+            img_source = Image.open(io.BytesIO(response.content)).convert('RGB')
+        except Exception as e:
+            print(f"[bbox] URL 이미지 로드 실패: {image_path}\n{e}")
+            return None
+    else:
+        if not os.path.exists(image_path):
+            print(f"[bbox] 파일 없음: {image_path}")
+            return None
+        img_source = Image.open(image_path).convert('RGB')
+
+    img_source = pad_to_square(img_source)
+    img_resized = img_source.resize((256, 256), Image.BILINEAR)
+    img_rgb = np.array(img_resized)
+    img_height, img_width = img_rgb.shape[:2]
+
+    from mmpose.apis import inference_topdown
+    bbox = np.array([[0, 0, img_width, img_height]], dtype=np.float32)
+    pose_results = inference_topdown(ap10k_model, img_rgb, bbox)
+    if not pose_results:
+        return None
+    # keypoints 추출
+    if hasattr(pose_results[0], 'pred_instances'):
+        keypoints = pose_results[0].pred_instances.keypoints[0]
+        scores = pose_results[0].pred_instances.keypoint_scores[0]
+        kpts_xy = keypoints[scores > min_score]
+    else:
+        kpts = pose_results[0]['keypoints']
+        if kpts.shape[1] == 3:
+            scores = kpts[:, 2]
+            kpts_xy = kpts[scores > min_score, :2]
+        else:
+            kpts_xy = kpts[:, :2]
+    if len(kpts_xy) == 0:
+        return None
+    x_min, y_min = kpts_xy.min(axis=0)
+    x_max, y_max = kpts_xy.max(axis=0)
+    # 여유 padding (10%)
+    pad_x = int((x_max - x_min) * 0.1)
+    pad_y = int((y_max - y_min) * 0.1)
+    x1 = max(int(x_min) - pad_x, 0)
+    y1 = max(int(y_min) - pad_y, 0)
+    x2 = min(int(x_max) + pad_x, img_width)
+    y2 = min(int(y_max) + pad_y, img_height)
+    return (x1, y1, x2, y2)
+SIMCLR_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'
 SIMCLR_OUT_DIM = 128
 SIMCLR_IMAGE_SIZE = 224
 DB_FEATURES_FILE = 'db_features.npy' 
@@ -426,7 +494,7 @@ if __name__ == "__main__":
         
         top_similar_dogs_simclr = search_similar_dogs(
             query_image_path=query_image_path, 
-            top_k=5,
+            top_k=6,
             model_path=SIMCLR_MODEL_PATH,
             out_dim=SIMCLR_OUT_DIM,
             image_size=SIMCLR_IMAGE_SIZE,

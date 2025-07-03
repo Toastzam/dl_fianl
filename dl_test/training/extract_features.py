@@ -27,7 +27,7 @@ except ImportError:
 # SimCLR 모델의 출력 임베딩 차원 (train.py에서 OUT_DIM과 동일하게 설정)
 OUT_DIM = 128 
 # 모델 가중치가 저장된 경로 (train.py의 SAVE_PATH와 동일하게 설정)
-SAVE_PATH = 'models/simclr_vit_dog_model.pth' 
+SAVE_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'
 # 모델 훈련 시 사용한 이미지 크기 (train.py의 IMAGE_SIZE와 동일하게 설정)
 IMAGE_SIZE = 224
 

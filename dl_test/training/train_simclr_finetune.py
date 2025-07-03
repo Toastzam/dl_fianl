@@ -18,10 +18,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 # --- 하이퍼파라미터 및 경로 설정 ---
 MODELS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../models'))
 DATA_DIR = 'training/Images'  # DB 이미지 폴더 (클래스별 하위폴더 가능, 라벨 미사용)
+<<<<<<< HEAD
 PRETRAINED_MODEL_PATH = os.path.join(MODELS_DIR, 'simclr_vit_dog_model.pth')  # 기존 SimCLR 사전학습 모델
 # FINETUNED_MODEL_PATH는 아래에서 동적으로 생성
 BATCH_SIZE = 128
 EPOCHS = 60
+=======
+PRETRAINED_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'  # 파인튜닝된 SimCLR 모델
+FINETUNED_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned.pth'  # 파인튜닝 후 저장 경로
+BATCH_SIZE = 32
+EPOCHS = 10
+>>>>>>> e5b4c9f5bf7a910bbf33a1a0acb1290141deab4e
 LR = 1e-4
 IMAGE_SIZE = 224
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
