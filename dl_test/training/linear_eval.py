@@ -25,8 +25,8 @@ train_size = len(full_dataset) - val_size
 train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
 print('2. 데이터 분할 완료')
 print('2-1. DataLoader 생성 시작')
-train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=0)
-val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=0)
+train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0)
+val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=0)
 print('2-1. DataLoader 생성 완료')
 
 
@@ -60,12 +60,68 @@ import csv
 
 
 print('6. Linear Evaluation 학습 루프 진입')
-print('6-0. DataLoader에서 한 batch만 테스트')
-for i, (img1, img2, label) in enumerate(train_loader):
-    print(f"[DEBUG][train_loader] i={i}, img1 shape={img1.shape}, label={label}")
-    if i > 10:
-        break
-print('6-0. DataLoader 테스트 완료')
+
+# ================= 학습 루프 복구 + 안전 print 추가 =================
+print('6. Linear Evaluation 학습 루프 진입')
+linear_logfile = 'linear_eval_log.csv'
+with open(linear_logfile, 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc'])
+    for epoch in range(num_epochs):
+        print(f'6-1. Epoch {epoch+1} 시작')
+        classifier.train()
+        total, correct, total_loss = 0, 0, 0
+        for batch_idx, (img1, img2, labels) in enumerate(train_loader):
+            try:
+                img1, labels = img1.to(device), labels.to(device)
+                with torch.no_grad():
+                    feats = encoder(img1)
+                logits = classifier(feats)
+                loss = criterion(logits, labels)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                total += labels.size(0)
+                correct += (logits.argmax(1) == labels).sum().item()
+                total_loss += loss.item() * labels.size(0)
+                if batch_idx % 10 == 0:
+                    print(f"[Train][Epoch {epoch+1}][Batch {batch_idx}] Loss: {loss.item():.4f}")
+            except Exception as e:
+                print(f"[Train][Epoch {epoch+1}][Batch {batch_idx}] 오류: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
+        train_acc = correct / total
+        train_loss = total_loss / total
+        print(f'6-2. Epoch {epoch+1} train 끝')
+        # Validation
+        classifier.eval()
+        total, correct, total_loss = 0, 0, 0
+        with torch.no_grad():
+            for batch_idx, (img1, img2, labels) in enumerate(val_loader):
+                try:
+                    img1, labels = img1.to(device), labels.to(device)
+                    feats = encoder(img1)
+                    logits = classifier(feats)
+                    loss = criterion(logits, labels)
+                    total += labels.size(0)
+                    correct += (logits.argmax(1) == labels).sum().item()
+                    total_loss += loss.item() * labels.size(0)
+                    if batch_idx % 10 == 0:
+                        print(f"[Val][Epoch {epoch+1}][Batch {batch_idx}] Loss: {loss.item():.4f}")
+                except Exception as e:
+                    print(f"[Val][Epoch {epoch+1}][Batch {batch_idx}] 오류: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
+        val_acc = correct / total
+        val_loss = total_loss / total
+        print(f"[Linear Eval][Epoch {epoch+1}] Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
+        writer.writerow([epoch+1, train_loss, train_acc, val_loss, val_acc])
+        if val_acc > best_acc:
+            best_acc = val_acc
+            torch.save(classifier.state_dict(), 'linear_classifier_best.pth')
+        print(f'6-3. Epoch {epoch+1} 종료')
 
 # 기존 학습 루프는 주석 처리 (문제 진단 후 복구)
 # linear_logfile = 'linear_eval_log.csv'
@@ -125,6 +181,8 @@ semi_size = int(len(train_dataset) * 0.05)
 semi_train, _ = random_split(train_dataset, [semi_size, len(train_dataset)-semi_size])
 semi_loader = DataLoader(semi_train, batch_size=64, shuffle=True)
 
+
+
 # --- Semi-supervised Linear Evaluation ---
 print(f"\n[SEMI-SUPERVISED] Training with only {semi_size} samples ({100*semi_size/len(train_dataset):.2f}%) of labeled data.")
 classifier_semi = nn.Linear(128, num_classes).to(device)
@@ -134,8 +192,6 @@ optimizer_semi = torch.optim.Adam(classifier_semi.parameters(), lr=1e-3)
 criterion_semi = nn.CrossEntropyLoss()
 num_epochs_semi = 20
 best_acc_semi = 0
-
-# --- CSV 기록용 ---
 semi_logfile = 'semi_eval_log.csv'
 with open(semi_logfile, 'w', newline='') as f:
     writer = csv.writer(f)
@@ -143,32 +199,48 @@ with open(semi_logfile, 'w', newline='') as f:
     for epoch in range(num_epochs_semi):
         classifier_semi.train()
         total, correct, total_loss = 0, 0, 0
-        for img1, img2, labels in semi_loader:
-            img1, labels = img1.to(device), labels.to(device)
-            with torch.no_grad():
-                feats = encoder(img1)
-            logits = classifier_semi(feats)
-            loss = criterion_semi(logits, labels)
-            optimizer_semi.zero_grad()
-            loss.backward()
-            optimizer_semi.step()
-            total += labels.size(0)
-            correct += (logits.argmax(1) == labels).sum().item()
-            total_loss += loss.item() * labels.size(0)
+        for batch_idx, (img1, img2, labels) in enumerate(semi_loader):
+            try:
+                img1, labels = img1.to(device), labels.to(device)
+                with torch.no_grad():
+                    feats = encoder(img1)
+                logits = classifier_semi(feats)
+                loss = criterion_semi(logits, labels)
+                optimizer_semi.zero_grad()
+                loss.backward()
+                optimizer_semi.step()
+                total += labels.size(0)
+                correct += (logits.argmax(1) == labels).sum().item()
+                total_loss += loss.item() * labels.size(0)
+                if batch_idx % 10 == 0:
+                    print(f"[Semi][Epoch {epoch+1}][Batch {batch_idx}] Loss: {loss.item():.4f}")
+            except Exception as e:
+                print(f"[Semi][Epoch {epoch+1}][Batch {batch_idx}] 오류: {e}")
+                import traceback
+                traceback.print_exc()
+                continue
         train_acc = correct / total
         train_loss = total_loss / total
         # Validation
         classifier_semi.eval()
         total, correct, total_loss = 0, 0, 0
         with torch.no_grad():
-            for img1, img2, labels in val_loader:
-                img1, labels = img1.to(device), labels.to(device)
-                feats = encoder(img1)
-                logits = classifier_semi(feats)
-                loss = criterion_semi(logits, labels)
-                total += labels.size(0)
-                correct += (logits.argmax(1) == labels).sum().item()
-                total_loss += loss.item() * labels.size(0)
+            for batch_idx, (img1, img2, labels) in enumerate(val_loader):
+                try:
+                    img1, labels = img1.to(device), labels.to(device)
+                    feats = encoder(img1)
+                    logits = classifier_semi(feats)
+                    loss = criterion_semi(logits, labels)
+                    total += labels.size(0)
+                    correct += (logits.argmax(1) == labels).sum().item()
+                    total_loss += loss.item() * labels.size(0)
+                    if batch_idx % 10 == 0:
+                        print(f"[Semi Val][Epoch {epoch+1}][Batch {batch_idx}] Loss: {loss.item():.4f}")
+                except Exception as e:
+                    print(f"[Semi Val][Epoch {epoch+1}][Batch {batch_idx}] 오류: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    continue
         val_acc = correct / total
         val_loss = total_loss / total
         print(f"[Semi-supervised][Epoch {epoch+1}] Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
