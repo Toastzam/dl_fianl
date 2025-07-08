@@ -52,12 +52,25 @@ class StanfordDogsDataset(Dataset):
 
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
-        image = Image.open(img_path).convert('RGB')
         label = self.labels[idx]
+        try:
+            image = Image.open(img_path).convert('RGB')
+        except Exception as e:
+            print(f"[Dataset][Error] Failed to load image: {img_path}\nError: {e}")
+            import traceback
+            traceback.print_exc()
+            # Optionally, you can skip or return a dummy image. Here, raise to catch in DataLoader loop.
+            raise
 
         if self.transform:
-            img1 = self.transform(image)
-            img2 = self.transform(image)
+            try:
+                img1 = self.transform(image)
+                img2 = self.transform(image)
+            except Exception as e:
+                print(f"[Dataset][Error] Transform failed for image: {img_path}\nError: {e}")
+                import traceback
+                traceback.print_exc()
+                raise
         else:
             img1 = image
             img2 = image
