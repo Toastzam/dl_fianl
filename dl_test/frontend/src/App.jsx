@@ -31,7 +31,7 @@ import ShowMap from './components/SearchPet/ShowMap';
 import SearchResult from './components/SearchPet/SearchResult';
 import SearchChatbotModal from './components/SearchPet/SearchChatbotModal';
 
-// 강아지 유사도 검색 시스템 (우리가 만든 것)
+// 강아지 유사도 검색 시스템 2025-06-29 손예정 추가 
 import DogSimilaritySearch from './DogSimilaritySearch';
 
 // 마이페이지 메뉴
