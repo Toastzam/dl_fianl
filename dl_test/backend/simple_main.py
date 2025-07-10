@@ -16,6 +16,8 @@ from PIL import Image
 import random
 
 from feature_extraction_service import get_feature_service
+# retrain_manager에서 retraining 트리거 함수 임포트
+from retrain_manager import trigger_retraining_if_needed
 
 # Pydantic 모델 정의
 class ImageUrlRequest(BaseModel):
@@ -616,6 +618,9 @@ async def extract_features_api(file: UploadFile = File(...)):
         
         print(f"✅ 벡터 추출 완료: {vector.shape}")
         
+        # 특징 추출 후 retraining 트리거 체크
+        trigger_retraining_if_needed()
+        
         return JSONResponse({
             "status": "success",
             "feature_vector": vector.tolist(),
@@ -680,6 +685,9 @@ async def extract_features_from_url_api(request: ImageUrlRequest):
         
         print(f"✅ 벡터 추출 완료: {vector.shape}")
         
+        # 특징 추출 후 retraining 트리거 체크
+        trigger_retraining_if_needed()
+        
         return JSONResponse({
             "status": "success",
             "feature_vector": vector.tolist(),
@@ -689,7 +697,6 @@ async def extract_features_from_url_api(request: ImageUrlRequest):
             "content_type": content_type,
             "model_info": feature_service.get_vector_info()
         })
-        
     except requests.exceptions.RequestException as e:
         print(f"❌ 이미지 다운로드 실패: {e}")
         return JSONResponse({
