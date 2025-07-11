@@ -126,16 +126,16 @@ def get_simclr_model_version(path):
     return fname
 
 SIMCLR_MODEL_VERSION = get_simclr_model_version(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'models', 'simclr_vit_dog_model_finetuned_v1.pth')
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'models', 'simclr_vit_dog_model_finetuned_v2.pth')
 )
 
 # SimCLR 관련 설정 (항상 절대경로 사용)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # backend 기준으로 절대경로
-SIMCLR_MODEL_PATH = os.path.join(BASE_DIR, '..', 'models', 'simclr_vit_dog_model_finetuned_v1.pth')
+SIMCLR_MODEL_PATH = os.path.join(BASE_DIR, '..', 'models', 'simclr_vit_dog_model_finetuned_v2.pth')
 print(f"[DEBUG] SIMCLR_MODEL_PATH 1: {os.path.abspath(SIMCLR_MODEL_PATH)}, exists: {os.path.exists(SIMCLR_MODEL_PATH)}")
 if not os.path.exists(SIMCLR_MODEL_PATH):
     # fallback: dl_test/models/ 경로도 시도
-    alt_path = os.path.join(BASE_DIR, '..', 'dl_test', 'models', 'simclr_vit_dog_model_finetuned_v1.pth')
+    alt_path = os.path.join(BASE_DIR, '..', 'dl_test', 'models', 'simclr_vit_dog_model_finetuned_v2.pth')
     print(f"[DEBUG] SIMCLR_MODEL_PATH 2 (alt): {os.path.abspath(alt_path)}, exists: {os.path.exists(alt_path)}")
     if os.path.exists(alt_path):
         SIMCLR_MODEL_PATH = alt_path
