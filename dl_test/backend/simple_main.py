@@ -725,6 +725,7 @@ async def get_feature_service_info():
             "message": str(e)
         }, status_code=500)
 
+
 @app.get("/api/image/{file_path:path}")
 async def serve_image(file_path: str):
     """이미지 파일 서빙 (실제 + 더미)"""

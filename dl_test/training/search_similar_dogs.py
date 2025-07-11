@@ -253,12 +253,14 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"예기치 않은 오류 발생: {e}")
     
-    # 예시 DB 접속 정보 (실제 환경에 맞게 수정)
-    db_host = 'byhou.synology.me'
-    db_user = 'h3'
-    db_password = 'Dbrlrus25^'
-    db_name = 'h3'
-    db_port = 3370
+    # .env 파일에서 DB 접속 정보 불러오기
+    from dotenv import load_dotenv
+    load_dotenv()
+    db_host = os.getenv('DB_HOST')
+    db_user = os.getenv('DB_USER')
+    db_password = os.getenv('DB_PASSWORD')
+    db_name = os.getenv('DB_NAME')
+    db_port = int(os.getenv('DB_PORT', 3306))
 
     print("\n[DB 기반 검색 결과]")
     try:
