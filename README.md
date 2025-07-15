@@ -30,6 +30,18 @@ cd dl_final
 cd dl_test/docker
 ```
 
+### 📋 **환경 변수 파일 설정**
+
+시스템 배포 전에 다음 **2개의 환경 변수 파일**을 확인하고 필요시 수정하세요:
+
+#### **1. 백엔드 환경 설정**: `dl_test/docker/.env`
+- **목적**: 백엔드 API 서버, 데이터베이스, ML 모델 설정
+- **사용**: Docker Compose에서 백엔드 컨테이너에 전달
+
+#### **2. 프론트엔드 환경 설정**: `dl_test/frontend/.env.docker`
+- **목적**: React 애플리케이션의 API 서버 연결 설정
+- **사용**: Docker 빌드 시 프론트엔드에 포함
+
 ### 🐳 **2단계: Docker Compose로 전체 시스템 빌드 및 실행**
 
 ```bash
