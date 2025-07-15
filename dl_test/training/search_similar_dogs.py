@@ -21,11 +21,11 @@ except ImportError:
 
 # DB에서 이미지 정보 조회 함수 임포트
 try:
-    from database import get_dog_by_image_path
+    from backend.app.database import get_dog_by_image_path
 except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
     try:
-        from database import get_dog_by_image_path
+        from app.database import get_dog_by_image_path
     except ImportError:
         get_dog_by_image_path = None  # 테스트 환경 등에서 None 처리
 

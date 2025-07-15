@@ -1,4 +1,7 @@
 import re
+import warnings
+warnings.filterwarnings("ignore", message="The metainfo config file*")
+
 def normalize_filename(filename):
     # 파일명에서 연속된 특수문자, 공백, 괄호 등은 모두 단일 언더스코어로 치환
     name, ext = os.path.splitext(filename)

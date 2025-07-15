@@ -83,4 +83,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8001
 
 # Application execution command
-CMD ["python", "backend/simple_main.py"]
+CMD ["python", "backend/main.py"]

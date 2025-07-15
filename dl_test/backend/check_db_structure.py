@@ -2,13 +2,13 @@
 실제 데이터베이스 구조 확인 스크립트
 """
 
-from database import DogDatabase
+from app.database import DatabaseManager
 
 def main():
     print("🔍 데이터베이스 구조 확인 중...")
     
     try:
-        db = DogDatabase()
+        db = DatabaseManager()
         
         # 모든 테이블 목록 조회
         print("\n📋 데이터베이스의 모든 테이블:")
