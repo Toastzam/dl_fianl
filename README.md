@@ -1,20 +1,77 @@
-﻿#  Dog Similarity S### 🐳 Docker Compose로 전체 스택 실행
+#  Dog Similarity Search System
 
-전체 시스템을 한 번에 실행하는 가장 간단한 ##  개발 환경 설정ash
+SimCLR + AP-10K 키포인트 기반 강아지 유사도 검색 시스템
+
+##  프로젝트 개요
+
+강아지 이미지를 업로드하면 **SimCLR(Self-Supervised Contrastive Learning)**과 **AP-10K 키포인트 검출**을 결합하여 데이터베이스에서 유사한 강아지를 찾아주는 AI 검색 시스템입니다.
+
+###  주요 기능
+
+- **🔍 SimCLR 기반 시각적 유사도 검색**: 128차원 벡터로 강아지의 시각적 특징 학습
+- **📍 키포인트 검출 및 시각화**: AP-10K 모델을 사용한 17개 동물 키포인트 검출
+- **⚖️ 복합 유사도 계산**: SimCLR 80% + 키포인트 20% 가중 조합
+- **🎨 실시간 키포인트 시각화**: 투명도와 색상을 적용한 전문적인 시각화
+- **🌐 웹 인터페이스**: React 기반 사용자 친화적 웹 애플리케이션
+- **💾 데이터베이스 기반 벡터 저장**: MySQL을 활용한 효율적인 이미지 벡터 관리
+
+---
+
+##  🚀 빠른 시작 (Docker - 권장)
+
+### 📍 **1단계: 프로젝트 클론 및 위치 이동**
+
+```bash
 # 1. 프로젝트 클론
-git clone <repository-url>
+git clone https://github.com/Toastzam/dl_fianl.git
 cd dl_final
 
-# 2. Docker Compose로 전체 스택 빌드 및 실행
+# 2. Docker Compose 파일이 있는 위치로 이동
 cd dl_test/docker
-docker-compose up -d
-
-# 3. 웹 브라우저에서 접속
-# Frontend: http://localhost
-# Backend API: http://localhost:8001/docs (FastAPI 문서)
 ```
 
-### 🚀 시스템 구성
+### 🐳 **2단계: Docker Compose로 전체 시스템 빌드 및 실행**
+
+```bash
+# 전체 시스템을 백그라운드에서 빌드 및 실행
+docker-compose up -d
+```
+
+> **📋 참고**: `docker-compose up -d`는 이미지가 없으면 자동으로 빌드한 후 실행합니다.
+> 
+> **다른 옵션들**:
+> ```bash
+> # 강제로 재빌드하고 실행
+> docker-compose up -d --build
+> 
+> # 빌드만 하고 실행하지 않음
+> docker-compose build
+> 
+> # 실시간 로그 보면서 실행 (포어그라운드)
+> docker-compose up
+> ```
+
+⏱️ **예상 시간**: 처음 빌드 시 약 8-10분 (mmcv 컴파일 포함)
+
+### ✅ **3단계: 시스템 준비 완료 확인**
+
+```bash
+# 컨테이너 상태 확인
+docker-compose ps
+
+# 백엔드 로그에서 "Application startup complete" 메시지 확인
+docker-compose logs backend
+```
+
+### 🌐 **4단계: 웹 애플리케이션 접속**
+
+시스템이 준비되면:
+- **웹 애플리케이션**: http://localhost
+- **API 문서**: http://localhost:8001/docs
+
+---
+
+## 🏗️ 시스템 구성
 
 - **Frontend**: React + Material Tailwind (nginx 서빙)
 - **Backend**: FastAPI + SimCLR + AP-10K 모델
@@ -23,15 +80,21 @@ docker-compose up -d
   - SimCLR Vision Transformer (개 유사도 검색)
   - AP-10K HRNet (키포인트 검출)
 
-### 📝 Docker 관리 명령어
+---
 
+## 📝 Docker 관리 명령어
+
+### 기본 명령어
 ```bash
 # 컨테이너 상태 확인
 docker-compose ps
 
-# 로그 확인
-docker-compose logs backend  # 백엔드 로그
-docker-compose logs frontend # 프론트엔드 로그
+# 실시간 로그 확인
+docker-compose logs -f
+
+# 백엔드/프론트엔드 개별 로그 확인
+docker-compose logs backend
+docker-compose logs frontend
 
 # 컨테이너 재시작
 docker-compose restart
@@ -41,50 +104,32 @@ docker-compose down
 
 # 완전 정리 (볼륨 포함)
 docker-compose down -v
-```imCLR + AP-10K 키포인트 기반 강아지 유사도 검색 시스템
+```
 
-##  프로젝트 개요
+### 🔧 문제 해결용 명령어
+```bash
+# 강제로 재빌드하고 실행 (코드 변경 시)
+docker-compose up -d --build
 
-강아지 이미지를 업로드하면 **SimCLR(Self-Supervised Contrastive Learning)**과 **AP-10K 키포인트 검출**을 결합하여 데이터베이스에서 유사한 강아지를 찾아주는 AI 검색 시스템입니다.
+# 빌드 캐시 무시하고 완전 재빌드
+docker-compose build --no-cache
 
-###  주요 기능
+# 빌드만 하고 실행하지 않음
+docker-compose build
 
-- ** SimCLR 기반 시각적 유사도 검색**: 128차원 벡터로 강아지의 시각적 특징 학습
-- ** 키포인트 검출 및 시각화**: AP-10K 모델을 사용한 17개 동물 키포인트 검출
-- ** 복합 유사도 계산**: SimCLR 80% + 키포인트 20% 가중 조합
-- ** 실시간 키포인트 시각화**: 투명도와 색상을 적용한 전문적인 시각화
-- ** 웹 인터페이스**: React 기반 사용자 친화적 웹 애플리케이션
-- ** 데이터베이스 기반 벡터 저장**: MySQL을 활용한 효율적인 이미지 벡터 관리
+# 특정 서비스만 재빌드
+docker-compose build backend
 
-##  빠른 시작 (Docker - 권장)
+# 특정 서비스만 재시작
+docker-compose restart backend
 
-### Docker를 사용한 원클릭 실행
+# 특정 서비스 로그만 실시간 확인
+docker-compose logs -f backend
+```
 
-`ash
-# 1. 프로젝트 클론
-git clone <repository-url>
-cd dl_final
+---
 
-# 2. Docker 컨테이너 빌드 및 실행
-docker build -t dog-similarity-search .
-docker run -p 8001:8001 -p 3000:3000 dog-similarity-search
-
-# 3. 웹 브라우저에서 접속
-# Backend API: http://localhost:8001
-# Frontend Web: http://localhost:3000
-`
-
-### Docker Compose를 사용한 전체 스택 실행
-
-`ash
-# 개발 환경
-docker-compose -f docker-compose.dev.yml up
-
-# 운영 환경
-docker-compose up
-`
-
-##  개발 환경 설정
+##  💻 개발 환경 설정 (고급 사용자용)
 
 ### 사전 요구사항
 
@@ -95,7 +140,7 @@ docker-compose up
 
 ### 백엔드 설정
 
-`ash
+```bash
 # 1. dl_test 디렉터리로 이동
 cd dl_test
 
@@ -115,11 +160,11 @@ DB_NAME=dog_similarity_db
 # 5. 백엔드 서버 실행
 cd backend
 python simple_main.py
-`
+```
 
 ### 프론트엔드 설정
 
-`ash
+```bash
 # 1. 프론트엔드 디렉터리로 이동
 cd dl_test/frontend
 
@@ -127,14 +172,16 @@ cd dl_test/frontend
 npm install
 
 # 3. 개발 서버 실행
-npm start
-`
+npm run dev
+```
 
-##  핵심 API 엔드포인트
+---
+
+##  📚 핵심 API 엔드포인트
 
 ###  이미지 검색 API
 
-`ash
+```bash
 # 강아지 유사도 검색
 POST /api/upload_and_search/
 Content-Type: multipart/form-data
@@ -161,11 +208,11 @@ Body: file (이미지 파일)
     "model_version": "simclr_vit_dog_model_finetuned_v2"
   }
 }
-`
+```
 
 ###  특징 벡터 추출 API
 
-`ash
+```bash
 # 이미지에서 128차원 특징 벡터 추출
 POST /api/extract_features/
 Content-Type: multipart/form-data
@@ -175,11 +222,11 @@ Body: file (이미지 파일)
 POST /api/extract_features_from_url/
 Content-Type: application/json
 Body: {"image_url": "https://example.com/dog.jpg"}
-`
+```
 
 ###  시스템 상태 확인
 
-`ash
+```bash
 # 헬스체크
 GET /health
 
@@ -191,25 +238,17 @@ GET /health
   "mode": "real_model",
   "message": "실제 모델 사용 가능"
 }
-`
+```
 
-##  성능 최적화 결과
+---
+
+##  ⚡ 성능 최적화 결과
 
 ###  Docker 최적화
 
 - **이전**: 17GB (단일 스테이지 빌드)
 - **최적화 후**: 4.77GB (멀티 스테이지 빌드)
 - **개선율**: 72% 크기 감소
-
-###  데이터베이스 아키텍처 개선
-
-- **이전**: .npy 파일 기반 벡터 저장 (550MB+ 파일)
-- **현재**: MySQL JSON 컬럼 기반 벡터 저장
-- **장점**: 
-  - 메모리 효율성 향상
-  - 데이터 일관성 보장
-  - 백업 및 복구 용이성
-  - 확장성 개선
 
 ###  AI 모델 최적화
 
@@ -218,7 +257,9 @@ GET /health
 - **복합 유사도**: 가중 평균 (SimCLR 80% + Keypoint 20%)
 - **평균 검색 시간**: 3-5초 (실제 모델 모드)
 
-##  기술 스택
+---
+
+##  🛠️ 기술 스택
 
 ### Backend
 - **FastAPI**: 고성능 Python 웹 프레임워크
@@ -230,6 +271,7 @@ GET /health
 ### Frontend
 - **React**: 사용자 인터페이스 라이브러리
 - **TypeScript**: 정적 타입 언어
+- **Material Tailwind**: UI 컴포넌트 라이브러리
 - **Axios**: HTTP 클라이언트
 
 ### AI/ML
@@ -240,70 +282,10 @@ GET /health
 ### Infrastructure
 - **Docker**: 컨테이너화
 - **MySQL**: 관계형 데이터베이스
-- **Nginx**: 리버스 프록시 (옵션)
-
-##  문제 해결
-
-### 일반적인 설치 문제
-
-**1. PyTorch CUDA 호환성 문제**
-`ash
-# CPU 버전 설치 (권장)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-`
-
-**2. MMPose 설치 오류**
-`ash
-# 기본 패키지 먼저 설치
-pip install openmim
-mim install mmcv-full==1.7.1
-pip install mmpose==0.29.0
-`
-
-**3. 데이터베이스 연결 오류**
-- .env 파일에 올바른 MySQL 연결 정보 확인
-- MySQL 서버 실행 상태 확인
-- 방화벽 설정 확인
-
-### 모델 관련 문제
-
-**1. 모델 파일 누락**
-- models/ 폴더에 simclr_vit_dog_model_finetuned_v2.pth 파일 확인
-- 파일 크기: 약 85MB
-
-**2. 더미 모드로 실행됨**
-- 모델 파일 경로 확인
-- Python 환경에서 PyTorch 설치 확인
-- 로그에서 모델 로드 오류 메시지 확인
-
-##  향후 개발 계획
-
-- [ ] **GPU 가속 지원**: CUDA를 활용한 추론 속도 향상
-- [ ] **배치 처리**: 다중 이미지 동시 검색
-- [ ] **캐싱 시스템**: Redis를 활용한 검색 결과 캐싱
-- [ ] **실시간 학습**: 새로운 이미지로 모델 지속 학습
-- [ ] **모바일 앱**: React Native 기반 모바일 앱
-- [ ] **클라우드 배포**: AWS/GCP 자동 배포 파이프라인
-
-##  라이선스
-
-이 프로젝트는 교육 및 연구 목적으로 개발되었습니다.
-
-##  기여하기
-
-1. Fork the Project
-2. Create your Feature Branch (git checkout -b feature/AmazingFeature)
-3. Commit your Changes (git commit -m 'Add some AmazingFeature')
-4. Push to the Branch (git push origin feature/AmazingFeature)
-5. Open a Pull Request
-
-##  문의
-
-프로젝트에 대한 문의사항이 있으시면 이슈를 등록해 주세요.
+- **Redis**: 캐시 시스템
+- **Nginx**: 리버스 프록시
 
 ---
-
-** Happy Dog Searching! **
 
 ## 🐳 Docker 추가 정보
 
@@ -332,6 +314,44 @@ pip install mmpose==0.29.0
 - **8001**: Backend API (FastAPI)
 - **6379**: Redis (내부 통신만)
 
+---
+
+##  🔧 문제 해결
+
+### 일반적인 설치 문제
+
+**1. PyTorch CUDA 호환성 문제**
+```bash
+# CPU 버전 설치 (권장)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+```
+
+**2. MMPose 설치 오류**
+```bash
+# 기본 패키지 먼저 설치
+pip install openmim
+mim install mmcv-full==1.7.1
+pip install mmpose==0.29.0
+```
+
+**3. 데이터베이스 연결 오류**
+- .env 파일에 올바른 MySQL 연결 정보 확인
+- MySQL 서버 실행 상태 확인
+- 방화벽 설정 확인
+
+### 모델 관련 문제
+
+**1. 모델 파일 누락**
+- models/ 폴더에 simclr_vit_dog_model_finetuned_v2.pth 파일 확인
+- 파일 크기: 약 85MB
+
+**2. 더미 모드로 실행됨**
+- 모델 파일 경로 확인
+- Python 환경에서 PyTorch 설치 확인
+- 로그에서 모델 로드 오류 메시지 확인
+
+---
+
 ## 🔍 FAQ
 
 **Q: Docker 빌드가 너무 오래 걸려요**
@@ -347,5 +367,36 @@ A: Docker Desktop의 메모리 할당을 8GB 이상으로 늘려주세요.
 A: Windows의 경우 Docker Desktop과 WSL2가 필요합니다.
 
 ---
+
+##  📈 향후 개발 계획
+
+- [ ] **GPU 가속 지원**: CUDA를 활용한 추론 속도 향상
+- [ ] **배치 처리**: 다중 이미지 동시 검색
+- [ ] **캐싱 시스템**: Redis를 활용한 검색 결과 캐싱
+- [ ] **실시간 학습**: 새로운 이미지로 모델 지속 학습
+- [ ] **모바일 앱**: React Native 기반 모바일 앱
+- [ ] **클라우드 배포**: AWS/GCP 자동 배포 파이프라인
+
+---
+
+##  📄 라이선스
+
+이 프로젝트는 교육 및 연구 목적으로 개발되었습니다.
+
+##  🤝 기여하기
+
+1. Fork the Project
+2. Create your Feature Branch (git checkout -b feature/AmazingFeature)
+3. Commit your Changes (git commit -m 'Add some AmazingFeature')
+4. Push to the Branch (git push origin feature/AmazingFeature)
+5. Open a Pull Request
+
+##  📞 문의
+
+프로젝트에 대한 문의사항이 있으시면 이슈를 등록해 주세요.
+
+---
+
+**🐕 Happy Dog Searching! 🔍**
 
 ⭐ **문제가 있다면 Issues에 남겨주세요!**
