@@ -1,0 +1,69 @@
+# 이미지 파일들
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+
+# Python 관련
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+.venv
+
+# IDE 관련
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS 관련
+.DS_Store
+Thumbs.db
+
+# 로그 파일
+*.log
+logs/
+
+# 모델 파일 (용량이 큰 경우)
+*.pth
+*.onnx
+*.h5
+
+# Docker 관련
+.dockerignore
+
+# 임시 파일
+temp/
+tmp/
+uploads/
+output_keypoints/
+
+# 데이터베이스 파일
+*.db
+*.sqlite
+*.sqlite3
+
+# 압축 파일
+*.zip
+*.tar.gz
+*.rar
+
+# MMPose 불필요한 폴더들 (이미 삭제됨)
+mm_pose/mmpose/checkpoints/
+mm_pose/mmpose/tests/
+mm_pose/mmpose/demo/
+mm_pose/mmpose/docs/
+mm_pose/mmpose/projects/
+mm_pose/mmpose/.github/
+mm_pose/mmpose/.circleci/
+mm_pose/mmpose/docker/
+mm_pose/mmpose/requirements/
+mm_pose/mmpose/resources/
+mm_pose/mmpose/tools/

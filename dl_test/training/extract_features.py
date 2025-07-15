@@ -27,24 +27,38 @@ except ImportError:
 # SimCLR 모델의 출력 임베딩 차원 (train.py에서 OUT_DIM과 동일하게 설정)
 OUT_DIM = 128 
 # 모델 가중치가 저장된 경로 (train.py의 SAVE_PATH와 동일하게 설정)
-SAVE_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'
+SAVE_PATH = '../models/simclr_vit_dog_model_finetuned_v2.pth'
 # 모델 훈련 시 사용한 이미지 크기 (train.py의 IMAGE_SIZE와 동일하게 설정)
 IMAGE_SIZE = 224
 
 # --- 특징 추출기 준비 함수 ---
-def setup_feature_extractor(model_path=SAVE_PATH, out_dim=OUT_DIM, image_size=IMAGE_SIZE):
+def setup_feature_extractor(model_path=None, out_dim=OUT_DIM, image_size=IMAGE_SIZE):
     """
     학습된 SimCLR 모델을 불러와 특징 추출기를 설정합니다.
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"특징 추출에 사용할 장치: {device}")
 
-    # 1. SimCLR 모델 인스턴스 생성 (학습 시 사용했던 것과 동일한 구조)
+    # 1. 모델 경로 설정 (절대 경로 사용)
+    if model_path is None:
+        # 절대 경로로 모델 찾기
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # training 폴더
+        # dl_test/models 경로 시도
+        model_path = os.path.join(base_dir, '..', 'models', 'simclr_vit_dog_model_finetuned_v2.pth')
+        if not os.path.exists(model_path):
+            # 프로젝트 루트의 models 경로 시도
+            model_path = os.path.join(base_dir, '..', '..', 'models', 'simclr_vit_dog_model_finetuned_v2.pth')
+        
+        # 절대 경로로 변환
+        model_path = os.path.abspath(model_path)
+        print(f"[DEBUG] 모델 경로: {model_path}, 존재: {os.path.exists(model_path)}")
+
+    # 2. SimCLR 모델 인스턴스 생성 (학습 시 사용했던 것과 동일한 구조)
     # model.py에서 vit_tiny_patch16_224를 사용하셨으므로, 그 구조 그대로 모델을 만듭니다.
     model = SimCLRVIT(out_dim=out_dim)
     model.to(device)
 
-    # 2. 학습된 가중치 로드
+    # 3. 학습된 가중치 로드
     if not os.path.exists(model_path):
         raise FileNotFoundError(f"모델 가중치 파일이 없습니다: {model_path}\n훈련을 먼저 완료해주세요.")
     
@@ -53,17 +67,17 @@ def setup_feature_extractor(model_path=SAVE_PATH, out_dim=OUT_DIM, image_size=IM
     model.load_state_dict(torch.load(model_path, map_location=device))
     print(f"모델 가중치 로드 완료: {model_path}")
 
-    # 3. 특징 추출기는 전체 모델 사용 (백본 + projection_head)
+    # 4. 특징 추출기는 전체 모델 사용 (백본 + projection_head)
     # SimCLR 모델 전체를 사용해야 128차원 출력을 얻을 수 있습니다.
     # backbone만 사용하면 ViT tiny의 원본 차원(192)이 나옵니다.
     feature_extractor = model  # 전체 모델 사용 
     
-    # 4. 모델을 평가 모드로 설정 (중요!)
+    # 5. 모델을 평가 모드로 설정 (중요!)
     # 드롭아웃, 배치 정규화 등이 평가 모드에 맞게 작동하도록 설정합니다.
     feature_extractor.eval() 
     print("특징 추출기 준비 완료.")
 
-    # 5. 이미지 전처리 트랜스폼 설정 (학습 시 사용한 것과 동일해야 함)
+    # 6. 이미지 전처리 트랜스폼 설정 (학습 시 사용한 것과 동일해야 함)
     # SimCLR 학습 시 사용했던 정규화 및 크기 조절 등을 그대로 적용합니다.
     # 데이터셋에서 사용한 get_simclr_transforms 함수를 재활용합니다.
     # 하지만 특징 추출 시에는 이미지를 2개로 증강할 필요가 없으므로,

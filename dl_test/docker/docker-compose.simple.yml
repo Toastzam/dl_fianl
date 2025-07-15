@@ -1,0 +1,32 @@
+services:
+  # 백엔드 API 서비스
+  backend:
+    build: 
+      context: ..
+      dockerfile: docker/Dockerfile.simple
+    container_name: dog-similarity-backend
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      # 모델 파일 마운트 (상위 디렉토리)
+      - ../../models:/app/models:ro
+      - ../../mm_pose:/app/mm_pose:ro
+      # 업로드 및 출력 폴더 마운트
+      - ../../uploads:/app/uploads
+      - ../../output_keypoints:/app/output_keypoints
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  default:
+    name: dog-similarity-network

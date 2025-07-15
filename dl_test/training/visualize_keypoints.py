@@ -33,7 +33,16 @@ from mmengine.structures import InstanceData # bbox를 담기 위해 필요
 # search_similar_dogs 함수는 backend에서 직접 임포트하여 사용 
 
 # --- AP-10K 모델 및 설정 경로 ---
-MMPose_ROOT = 'C:/dl_final/dl_fianl/mm_pose/mmpose' # 경로 수정: dl_fianl로 변경
+# 로컬 환경과 Docker 환경 모두 지원
+# 먼저 로컬 환경의 mm_pose 폴더를 확인하고, 없으면 Docker 경로 사용
+current_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+local_mmpose_root = os.path.join(os.path.dirname(current_dir), 'mm_pose', 'mmpose')
+docker_mmpose_root = '/usr/local/lib/python3.10/site-packages/mmpose/.mim'
+
+if os.path.exists(local_mmpose_root):
+    MMPose_ROOT = local_mmpose_root
+else:
+    MMPose_ROOT = docker_mmpose_root
 
 # 설정 파일 경로 
 AP10K_CONFIG_FILE = os.path.join(MMPose_ROOT, 'configs', 'animal_2d_keypoint', 
@@ -111,11 +120,10 @@ def get_dog_bbox_from_keypoints(image_path, ap10k_model, device, min_score=0.3):
     x2 = min(int(x_max) + pad_x, img_width)
     y2 = min(int(y_max) + pad_y, img_height)
     return (x1, y1, x2, y2)
-SIMCLR_MODEL_PATH = 'models/simclr_vit_dog_model_finetuned_v1.pth'
+SIMCLR_MODEL_PATH = '../models/simclr_vit_dog_model_finetuned_v1.pth'
 SIMCLR_OUT_DIM = 128
 SIMCLR_IMAGE_SIZE = 224
-DB_FEATURES_FILE = 'db_features.npy' 
-DB_IMAGE_PATHS_FILE = 'db_image_paths.npy'
+# 더 이상 .npy 파일을 사용하지 않음 - DB에서 직접 벡터 로드
 
 # 쿼리 이미지 경로 (테스트를 위해 설정, 실제 프로젝트에서는 사용자 입력 받음)
 # 🚨🚨🚨 이 경로도 본인의 실제 이미지 경로로 변경해야 합니다! 🚨🚨🚨
@@ -497,9 +505,7 @@ if __name__ == "__main__":
             top_k=6,
             model_path=SIMCLR_MODEL_PATH,
             out_dim=SIMCLR_OUT_DIM,
-            image_size=SIMCLR_IMAGE_SIZE,
-            db_features_file=DB_FEATURES_FILE,
-            db_image_paths_file=DB_IMAGE_PATHS_FILE
+            image_size=SIMCLR_IMAGE_SIZE
         )
         
         print("\n--- SimCLR 기반 가장 유사한 강아지 검색 결과 (상위 5개) ---")

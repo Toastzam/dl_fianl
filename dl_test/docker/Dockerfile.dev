@@ -1,0 +1,35 @@
+# 개발용 Dockerfile (더 빠른 빌드)
+FROM python:3.9-slim
+
+# 작업 디렉터리 설정
+WORKDIR /app
+
+# 시스템 패키지 설치 (최소한만)
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1-mesa-glx \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python 의존성 파일 복사 및 설치
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 개발 시 코드 변경을 위해 볼륨 마운트 사용
+# (docker-compose에서 볼륨으로 코드 마운트)
+
+# 환경 변수 설정
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=development
+
+# 포트 노출
+EXPOSE 8001
+
+# 개발용 핫 리로드로 실행
+CMD ["uvicorn", "backend.simple_main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]

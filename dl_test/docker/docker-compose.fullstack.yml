@@ -1,0 +1,52 @@
+services:
+  # 풀스택 애플리케이션 (Frontend + Backend)
+  fullstack:
+    build: 
+      context: ../..
+      dockerfile: dl_test/docker/Dockerfile.fullstack
+    container_name: dog-similarity-fullstack
+    ports:
+      - "80:80"      # Nginx (Frontend)
+      - "8001:8001"  # FastAPI (Backend)
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    volumes:
+      # 모델 파일 마운트 (상위 디렉토리의 models 폴더)
+      - ../../models:/app/models:ro
+      - ../../mm_pose:/app/mm_pose:ro
+      # 업로드 및 출력 폴더 마운트
+      - ../uploads:/app/uploads
+      - ../output_keypoints:/app/output_keypoints
+      # 로그 폴더 (옵션)
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis 캐시 서비스 (옵션 - 성능 향상용)
+  redis:
+    image: redis:7-alpine
+    container_name: dog-similarity-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  default:
+    name: dog-similarity-network
